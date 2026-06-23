@@ -1,0 +1,6 @@
+{
+  "name": "Raqeeb Commerce AI",
+  "description": "مساعد ذكي يراقب متجرك في سلة قبل أن تتحول المشاكل إلى شكاوى",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>رقيب التجارة - ذكاء اصطناعي تفاعلي لإدارة عمليات ومخاطر سلة</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='none'%3E%3Cpath d='M 68 80 C 68 80, 128 65, 188 80 C 188 115, 188 175, 128 215 C 68 175, 68 115, 68 80 Z' stroke='%230f172a' stroke-width='12' fill='%23ffffff'/%3E%3Ccircle cx='128' cy='135' r='18' fill='%230ea5e9'/%3E%3Ccircle cx='128' cy='135' r='9' fill='%230f172a'/%3E%3C/svg%3E" />
+    <script id="fetch-getter-patch">
+      // Fail-safe error silencing and fetch patch for sandboxed environments
+      (function() {
+        // 1. Silent any 'only a getter' or cross-origin 'Script error' from breaking the UI
+        window.addEventListener('error', function(e) {
+          var msg = e.message || '';
+          if (msg.indexOf('only a getter') > -1 || msg.indexOf('Script error') > -1 || msg.indexOf('fetch') > -1) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.onerror = function(message, url, line, col, error) {
+          var msg = message || '';
+          if (msg.indexOf('only a getter') > -1 || msg.indexOf('Script error') > -1 || msg.indexOf('fetch') > -1) {
+            return true;
+          }
+        };
+
+        try {
+          var currentFetch = window.fetch;
+          // Try to define configurable getter and setter on window
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return currentFetch;
+            },
+            set: function(val) {
+              currentFetch = val;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          try {
+            // Fallback: Try on Window prototype if window own property is not configurable
+            var proto = Object.getPrototypeOf(window);
+            if (proto) {
+              var currentProtoFetch = proto.fetch || window.fetch;
+              Object.defineProperty(proto, 'fetch', {
+                get: function() {
+                  return currentProtoFetch;
+                },
+                set: function(val) {
+                  currentProtoFetch = val;
+                },
+                configurable: true,
+                enumerable: true
+              });
+            }
+          } catch (e2) {
+            // Safe fallback
+          }
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
