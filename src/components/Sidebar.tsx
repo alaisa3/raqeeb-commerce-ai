@@ -11,7 +11,8 @@ import {
   DollarSign, 
   CheckSquare, 
   Unplug, 
-  Layers
+  Layers,
+  X
 } from "lucide-react";
 
 interface SidebarProps {
@@ -20,9 +21,11 @@ interface SidebarProps {
   storeName: string;
   isSalla: boolean;
   logout: () => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla, logout }: SidebarProps) {
+export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla, logout, isOpen, onClose }: SidebarProps) {
   const menuItems = [
     { id: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
     { id: "orders", label: "جميع الطلبات", icon: ShoppingBag },
@@ -35,12 +38,26 @@ export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla,
   ];
 
   return (
-    <div id="sidebar-container" className="w-66 bg-white border-l border-slate-200/80 flex flex-col h-screen text-slate-600 sticky top-0 right-0 z-10 shrink-0 shadow-[1px_0_10px_rgba(0,0,0,0.02)]">
+    <div 
+      id="sidebar-container" 
+      className={`w-66 bg-white border-l border-slate-200/80 flex flex-col h-screen text-slate-600 fixed md:sticky top-0 right-0 z-50 shrink-0 shadow-[1px_0_10px_rgba(0,0,0,0.02)] transition-transform duration-300 ease-in-out ${
+        isOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
+      }`}
+    >
       {/* Brand Header */}
-      <div className="p-6 border-b border-slate-100 flex flex-col gap-1.5">
-        <div className="flex items-center gap-3">
-          <RaqeebLogo size={36} />
-          <span className="font-extrabold text-lg text-slate-900 tracking-tight">رقيب التجارة</span>
+      <div className="p-5 border-b border-slate-100 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <RaqeebLogo size={36} />
+            <span className="font-extrabold text-lg text-slate-900 tracking-tight">رقيب التجارة</span>
+          </div>
+          {/* Close button for mobile */}
+          <button 
+            onClick={onClose} 
+            className="md:hidden p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
         <span className="text-xs text-emerald-600 font-semibold block mt-1 text-center">ندعمك لتنمو تجارتك</span>
       </div>
@@ -66,7 +83,10 @@ export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla,
             <button
               id={`nav-item-${item.id}`}
               key={item.id}
-              onClick={() => setCurrentTab(item.id)}
+              onClick={() => {
+                setCurrentTab(item.id);
+                onClose();
+              }}
               className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm text-right transition-all duration-200 cursor-pointer ${
                 isActive 
                   ? "bg-emerald-50/80 text-emerald-700 font-bold border-r-4 border-emerald-500 shadow-sm" 

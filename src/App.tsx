@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
+import RaqeebLogo from "./components/RaqeebLogo";
 import { 
   TrendingUp, 
   Clock, 
@@ -20,7 +21,8 @@ import {
   Lock,
   Globe,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Menu
 } from "lucide-react";
 import { 
   AreaChart, 
@@ -56,6 +58,9 @@ const delayedTrendData = [
 ];
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [fadeSplash, setFadeSplash] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true); // Start as true inside app for frictionless demo
   const [currentTab, setCurrentTab] = useState<string>("dashboard");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -126,6 +131,24 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // Splash screen timing
+  useEffect(() => {
+    // Start fading after 1500ms
+    const fadeTimer = setTimeout(() => {
+      setFadeSplash(true);
+    }, 1500);
+
+    // Completely remove splash screen from DOM after 2300ms
+    const removeTimer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2300);
+
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(removeTimer);
+    };
+  }, []);
 
   // Initial Fetch Setup
   useEffect(() => {
@@ -503,25 +526,65 @@ export default function App() {
   return (
     <div id="app-root" className="min-h-screen bg-brand-dark flex font-sans leading-relaxed selection:bg-brand-emerald selection:text-brand-dark">
       
+      {/* Full Page Splash Screen */}
+      {showSplash && (
+        <div 
+          id="brand-splash-screen" 
+          className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-50 transition-opacity duration-700 ease-in-out pointer-events-none select-none ${
+            fadeSplash ? "opacity-0" : "opacity-100"
+          }`}
+        >
+          <div className="flex flex-col items-center gap-6">
+            {/* Animated logo entry */}
+            <div className="p-6 bg-white rounded-3xl shadow-xl shadow-slate-100 border border-slate-100/80 flex items-center justify-center animate-bounce">
+              <RaqeebLogo size={120} />
+            </div>
+            
+            {/* Slogan & brand name */}
+            <div className="text-center space-y-2">
+              <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">رقيب التجارة</h1>
+              <p className="text-sm text-emerald-600 font-bold tracking-wide">ندعمك لتنمو تجارتك</p>
+            </div>
+          </div>
+          
+          {/* Small loading spinner at the bottom */}
+          <div className="absolute bottom-12 flex flex-col items-center gap-2">
+            <span className="w-8 h-8 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin"></span>
+            <span className="text-xs text-slate-400 font-medium">جاري فحص المخاطر ومراقبة المتجر...</span>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Native RTL Navigation */}
       {isAuthenticated && (
-        <Sidebar 
-          currentTab={currentTab} 
-          setCurrentTab={(tab) => {
-            setCurrentTab(tab);
-            setSelectedOrderId(null);
-          }} 
-          storeName={store.storeName}
-          isSalla={store.platform === "salla"}
-          logout={() => {
-            setIsAuthenticated(false);
-            showToast("تم تسجيل الخروج بنجاح 👋");
-          }}
-        />
+        <>
+          <Sidebar 
+            currentTab={currentTab} 
+            setCurrentTab={(tab) => {
+              setCurrentTab(tab);
+              setSelectedOrderId(null);
+            }} 
+            storeName={store.storeName}
+            isSalla={store.platform === "salla"}
+            logout={() => {
+              setIsAuthenticated(false);
+              showToast("تم تسجيل الخروج بنجاح 👋");
+            }}
+            isOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+          />
+          {isSidebarOpen && (
+            <div 
+              id="sidebar-overlay" 
+              className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 md:hidden transition-opacity"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
+        </>
       )}
 
       {/* Main Panel Content Area */}
-      <main className="flex-1 overflow-y-auto h-screen p-8 relative flex flex-col gap-6">
+      <main className="flex-1 overflow-y-auto h-screen p-4 md:p-8 relative flex flex-col gap-6">
 
         {/* Global Floating Toast */}
         {toast && (
@@ -537,54 +600,70 @@ export default function App() {
 
         {/* TOP BAR / Header Section */}
         {isAuthenticated && (
-          <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800 pb-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                  {currentTab === "dashboard" && "لوحة الرقابة والعمليات اليومية"}
-                  {currentTab === "orders" && "سجلات ومتابعة الشحنات"}
-                  {currentTab === "delayed" && "فلترة الشحنات المتأخرة"}
-                  {currentTab === "returns" && "البوابة الذكية للمرتجعات"}
-                  {currentTab === "messages" && "قوالب ومولد رسائل الواتساب الذكي"}
-                  {currentTab === "upload" && "استيراد الشحنات يدوياً (CSV)"}
-                  {currentTab === "settings" && "إعدادات منصة رقيب وتنبيهات السياسة"}
-                  {currentTab === "billing" && "خطط الترقية واشتراكات متجر سلة"}
-                </h1>
-                {store.platform === "demo" && (
-                  <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1.5">
-                    الوضع التجريبي نشط
-                  </span>
-                )}
+          <header className="flex flex-col gap-4 border-b border-slate-200 pb-5">
+            {/* Mobile Header Row with hamburger */}
+            <div className="flex items-center justify-between md:hidden gap-3">
+              <div className="flex items-center gap-2.5">
+                <RaqeebLogo size={32} />
+                <span className="font-extrabold text-base text-slate-900">رقيب التجارة</span>
               </div>
-              <p className="text-gray-400 text-sm mt-1">
-                تنبؤ بمخاطر العمليات قبل حدوثها لمتاجر سلة السعودية
-              </p>
+              <button
+                id="mobile-menu-toggle"
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200 hover:text-slate-900 transition-all cursor-pointer flex items-center justify-center animate-pulse"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex items-center gap-3 self-end md:self-auto">
-              <button
-                id="reset-demo-btn"
-                onClick={handleResetDemoData}
-                title="إعادة شحن البيانات الافتراضية"
-                className="bg-[#112240] hover:bg-[#1e345b] text-gray-300 border border-gray-800 hover:border-brand-teal/50 transition-all px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer flex items-center gap-2"
-              >
-                <RefreshCw className="w-4 h-4 text-brand-emerald" />
-                استعادة البيانات الافتراضية
-              </button>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {currentTab === "dashboard" && "لوحة الرقابة والعمليات اليومية"}
+                    {currentTab === "orders" && "سجلات ومتابعة الشحنات"}
+                    {currentTab === "delayed" && "فلترة الشحنات المتأخرة"}
+                    {currentTab === "returns" && "البوابة الذكية للمرتجعات"}
+                    {currentTab === "messages" && "قوالب ومولد رسائل الواتساب الذكي"}
+                    {currentTab === "upload" && "استيراد الشحنات يدوياً (CSV)"}
+                    {currentTab === "settings" && "إعدادات منصة رقيب وتنبيهات السياسة"}
+                    {currentTab === "billing" && "خطط الترقية واشتراكات متجر سلة"}
+                  </h1>
+                  {store.platform === "demo" && (
+                    <span className="bg-amber-500/15 text-amber-700 border border-amber-500/20 text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1.5 shrink-0">
+                      الوضع التجريبي نشط
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-400 text-xs md:text-sm mt-1 font-medium">
+                  تنبؤ بمخاطر العمليات قبل حدوثها لمتاجر سلة السعودية
+                </p>
+              </div>
 
-              <button
-                id="sync-button"
-                onClick={syncSalla}
-                disabled={syncing}
-                className="bg-brand-emerald hover:bg-brand-emerald/90 text-brand-dark px-5 py-2.5 rounded-xl font-bold text-sm shadow-xl hover:shadow-brand-emerald/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "جاري مزامنة سلة..." : "مزامنة طلبات سلة"}
-              </button>
+              <div className="flex flex-wrap items-center gap-2 md:gap-3 justify-end mt-2 md:mt-0">
+                <button
+                  id="reset-demo-btn"
+                  onClick={handleResetDemoData}
+                  title="إعادة شحن البيانات الافتراضية"
+                  className="bg-[#112240] hover:bg-[#1e345b] text-gray-100 border border-gray-800 transition-all px-3 py-1.5 md:px-4 md:py-2.5 rounded-xl text-xs md:text-sm font-medium cursor-pointer flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-brand-emerald animate-spin-once" />
+                  <span>استعادة الافتراضي</span>
+                </button>
+
+                <button
+                  id="sync-button"
+                  onClick={syncSalla}
+                  disabled={syncing}
+                  className="bg-brand-emerald hover:bg-brand-emerald/90 text-brand-dark px-4 py-1.5 md:px-5 md:py-2.5 rounded-xl font-bold text-xs md:text-sm shadow-md hover:shadow-brand-emerald/20 transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "جاري المزامنة..." : "مزامنة سلة"}
+                </button>
+              </div>
             </div>
           </header>
         )}
-
         {/* ----------------- RENDER BODY PANELS ----------------- */}
 
         {!isAuthenticated ? (

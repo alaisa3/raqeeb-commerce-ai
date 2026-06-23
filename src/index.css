@@ -152,11 +152,13 @@ tr:hover {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
-/* ================================
-   Mobile Responsive Fix
-   Raqeeb Commerce AI
-================================ */
 
+
+/* ================================
+   Mobile Responsive Stability Fix
+   Raqeeb Commerce AI
+   Added to prevent sidebar/content split and horizontal overflow on phones
+================================ */
 @media (max-width: 768px) {
   html,
   body,
@@ -168,79 +170,31 @@ tr:hover {
   }
 
   #app-root {
-    flex-direction: column !important;
-    min-height: 100vh !important;
+    position: relative !important;
   }
 
   #sidebar-container {
-    position: relative !important;
-    top: auto !important;
-    right: auto !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-height: none !important;
-    flex-shrink: 0 !important;
-    border-left: 0 !important;
-    border-bottom: 1px solid #e2e8f0 !important;
-    box-shadow: none !important;
-  }
-
-  #sidebar-container > div:first-child {
-    padding: 16px !important;
-    align-items: center !important;
-    text-align: center !important;
-  }
-
-  #sidebar-container > div:nth-child(2) {
-    margin: 12px !important;
-  }
-
-  #sidebar-container nav {
-    display: flex !important;
-    flex-direction: row !important;
-    gap: 8px !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    padding: 10px 12px 14px !important;
-    white-space: nowrap !important;
-    flex: none !important;
-  }
-
-  #sidebar-container nav button {
-    width: auto !important;
-    min-width: max-content !important;
-    flex: 0 0 auto !important;
-    padding: 10px 14px !important;
-    border-radius: 14px !important;
-    font-size: 13px !important;
-  }
-
-  #sidebar-container nav button span {
-    white-space: nowrap !important;
-  }
-
-  #sidebar-container > div:last-child {
-    display: none !important;
+    width: min(86vw, 330px) !important;
+    max-width: 86vw !important;
   }
 
   main {
     width: 100% !important;
     max-width: 100% !important;
+    min-width: 0 !important;
     height: auto !important;
     min-height: 100vh !important;
     overflow-x: hidden !important;
-    overflow-y: visible !important;
-    padding: 16px !important;
-    gap: 16px !important;
+    padding: 14px !important;
   }
 
   header {
-    padding-bottom: 16px !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   header h1 {
-    font-size: 22px !important;
+    font-size: 20px !important;
     line-height: 1.35 !important;
   }
 
@@ -248,16 +202,18 @@ tr:hover {
     grid-template-columns: 1fr !important;
   }
 
-  #kpi-grid > div {
-    grid-column: auto !important;
+  #delayed-trend-chart-card,
+  .recharts-wrapper,
+  .recharts-responsive-container {
+    max-width: 100% !important;
   }
 
   #delayed-trend-chart-card {
-    padding: 16px !important;
     overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
-  .recharts-responsive-container {
+  #delayed-trend-chart-card .recharts-responsive-container {
     min-width: 560px !important;
   }
 
@@ -276,22 +232,15 @@ tr:hover {
 @media (max-width: 480px) {
   main {
     padding: 12px !important;
+    gap: 14px !important;
   }
 
-  #sidebar-container > div:first-child {
-    padding: 14px 12px !important;
+  #sidebar-container {
+    width: 88vw !important;
+    max-width: 88vw !important;
   }
 
-  #sidebar-container nav button {
-    padding: 9px 12px !important;
-    font-size: 12px !important;
-  }
-
-  header h1 {
-    font-size: 20px !important;
-  }
-
-  .recharts-responsive-container {
-    min-width: 500px !important;
+  #delayed-trend-chart-card .recharts-responsive-container {
+    min-width: 520px !important;
   }
 }

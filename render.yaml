@@ -4,23 +4,5 @@ services:
     env: node
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: npm start
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: APP_URL
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: SALLA_CLIENT_ID
-        sync: false
-      - key: SALLA_CLIENT_SECRET
-        sync: false
-      - key: SALLA_REDIRECT_URI
-        sync: false
-      - key: SALLA_AUTH_URL
-        value: https://accounts.salla.sa/oauth2/auth
-      - key: SALLA_TOKEN_URL
-        value: https://accounts.salla.sa/oauth2/token
-      - key: SALLA_API_BASE_URL
-        value: https://api.salla.dev/admin/v2
+    startCommand: npm run start
+    autoDeploy: true
