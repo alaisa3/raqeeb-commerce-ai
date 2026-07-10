@@ -4,5 +4,5 @@ services:
     env: node
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: npm run start
+    startCommand: npm start
     autoDeploy: true

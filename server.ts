@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 app.use(express.json({ limit: "10mb" }));
 
@@ -150,11 +150,11 @@ function getInitialDB(): DBStructure {
       rule_no_after_10pm: true,
       rule_require_phone: true,
       rule_not_if_completed: true,
-      defaultTone: "برودية",
+      defaultTone: "ودية",
       enableEmailAlerts: true,
       enableSMSAlerts: true,
       alertDelayThresholdHours: 24,
-      emailTemplateBody: "شريكنا العزيز {customer_name}، شحنتك رقم {order_number} المتجهة إلى {customer_city} مع الناقل {carrier} قد تتأخر قليلاً عن الموعب المعتاد بـ 24 ساعة. نعمل جاهدين لتسليمها بأسرع وقت.",
+      emailTemplateBody: "شريكنا العزيز {customer_name}، شحنتك رقم {order_number} المتجهة إلى {customer_city} مع الناقل {carrier} قد تتأخر قليلاً عن الموعد المعتاد بـ 24 ساعة. نعمل جاهدين لتسليمها بأسرع وقت.",
       smsTemplateBody: "عميلنا العزيز {customer_name}، نعتذر عن تأخر شحنتك مع {carrier} رقم {order_number}. نعمل على تصعيدها وتسليمها لك عاجلاً.",
     },
     tasks: [],
@@ -609,51 +609,8 @@ app.get("/api/auth/me", (req, res) => {
 });
 
 //---------------------------------------------------------
-// Salla OAuth Emulated Flows
+// Salla Sync Actions (demo until real token exchange is added)
 //---------------------------------------------------------
-app.get("/api/salla/connect", (req, res) => {
-  const state = req.query.state || "rand-state";
-  const connectUrl = `/api/salla/callback?code=mock_code_123456&state=${state}`;
-  res.json({ url: connectUrl });
-});
-
-app.get("/api/salla/callback", (req, res) => {
-  const { code, state } = req.query;
-  const db = loadDB();
-  
-  // Connect the primary demo store to Salla platform
-  if (db.stores.length > 0) {
-    db.stores[0].platform = "salla" as any;
-    db.stores[0].sallaMerchantId = "merch-" + Math.floor(Math.random() * 1000000);
-    db.stores[0].accessToken = "salla_live_access_token_" + Math.floor(Math.random() * 99999);
-    db.stores[0].refreshToken = "salla_live_refresh_token_" + Math.floor(Math.random() * 99999);
-    db.stores[0].tokenExpiresAt = new Date(Date.now() + 3600 * 1000 * 24).toISOString();
-    db.stores[0].connectedAt = new Date().toISOString();
-    saveDB(db);
-  }
-  
-  res.send(`
-    <html>
-      <head>
-        <title>اتصال ناجح</title>
-        <style>
-          body { font-family: 'Cairo', sans-serif; text-align: center; padding: 50px; background: #0A0F1D; color: white; }
-          .card { background: #0B192C; padding: 40px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1px solid #10B981; }
-          .btn { background: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin-top: 20px; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <h2 style="color: #10B981;">🎉 تم ربط متجر سلة بنجاح!</h2>
-          <p>قامت منصة ولاء بمزامنة البيانات وبناء لوحة تحكم متجرك.</p>
-          <a href="/" class="btn">ذهاب لوحة التحكم</a>
-        </div>
-      </body>
-    </html>
-  `);
-});
-
-// Sync Salla actions
 app.post("/api/salla/sync-orders", async (req, res) => {
   const db = loadDB();
   
@@ -995,6 +952,98 @@ app.post("/api/settings", (req, res) => {
 });
 
 //---------------------------------------------------------
+// Salla OAuth & Webhook endpoints
+//---------------------------------------------------------
+app.get("/api/salla/connect", (req, res) => {
+  const clientId = process.env.SALLA_CLIENT_ID;
+  const redirectUri = process.env.SALLA_REDIRECT_URI;
+
+  if (!clientId || !redirectUri) {
+    return res.status(400).send(`
+      <div style="font-family: system-ui, sans-serif; text-align: center; padding: 50px; direction: rtl; background-color: #0b192f; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+        <h2 style="color: #ef4444; margin-bottom: 20px;">عذرًا، تهيئة الربط غير مكتملة</h2>
+        <p style="font-size: 16px; color: #cbd5e1; max-width: 600px; line-height: 1.8; margin: 0 auto 20px auto;">
+          لم يتم العثور على متغيرات البيئة المطلوبة للربط مع سلة (SALLA_CLIENT_ID أو SALLA_REDIRECT_URI). 
+          يرجى إضافة هذه المتغيرات في الإعدادات الخاصة بـ AI Studio أو ملف .env لتتمكن من استخدام ميزة الربط المباشر لـ "رقيب".
+        </p>
+        <button onclick="window.close()" style="margin-top: 20px; background-color: #10b981; color: #0b192f; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s;">إغلاق الصفحة</button>
+      </div>
+    `);
+  }
+
+  // Generate OAuth URL for Salla authorization
+  const sallaAuthUrl = `https://accounts.salla.sa/oauth2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=offline_access`;
+  
+  res.redirect(sallaAuthUrl);
+});
+
+app.get("/api/salla/callback", (req, res) => {
+  const { code, error, error_description } = req.query;
+
+  if (error) {
+    return res.status(400).send(`
+      <div style="font-family: system-ui, sans-serif; text-align: center; padding: 50px; direction: rtl; background-color: #0b192f; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+        <h2 style="color: #ef4444; margin-bottom: 20px;">فشل الربط مع سلة</h2>
+        <p style="font-size: 16px; color: #cbd5e1; max-width: 600px; line-height: 1.8; margin: 0 auto 20px auto;">
+          حدث خطأ أثناء محاولة الحصول على الصلاحيات من منصة سلة: <br/>
+          <span style="font-family: monospace; color: #f43f5e; background-color: rgba(244, 63, 94, 0.1); padding: 5px 10px; border-radius: 4px; display: inline-block; margin-top: 10px;">
+            ${error_description || error}
+          </span>
+        </p>
+        <button onclick="window.close()" style="margin-top: 20px; background-color: #10b981; color: #0b192f; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; cursor: pointer;">إغلاق</button>
+      </div>
+    `);
+  }
+
+  if (!code) {
+    return res.status(400).send("مؤشر مفقود: لم يتم استلام رمز الموافقة (code) من سلة.");
+  }
+
+  // TODO / FUTURE DEVELOPMENT:
+  // Here, we would exchange the 'code' for an access_token and refresh_token
+  // using Salla's token endpoint: POST https://accounts.salla.sa/oauth2/token
+  // with SALLA_CLIENT_ID and SALLA_CLIENT_SECRET.
+  // SALLA_CLIENT_SECRET must never be hardcoded or embedded directly inside the code repository.
+  
+  res.send(`
+    <div style="font-family: system-ui, sans-serif; text-align: center; padding: 50px; direction: rtl; background-color: #0b192f; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+      <div style="background-color: #10b981; color: #0b192f; border-radius: 50%; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 40px; margin-bottom: 25px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);">✓</div>
+      <h2 style="color: #10b981; margin-bottom: 15px;">تم الربط التجريبي بنجاح!</h2>
+      <p style="font-size: 16px; color: #cbd5e1; max-width: 600px; line-height: 1.8; margin: 0 auto 20px auto;">
+        تم استقبال موافقة سلة بنجاح (رمز الموافقة المستلم: <span style="font-family: monospace; color: #10b981; font-weight: bold;">${code}</span>).<br/>
+        التطبيق يعمل الآن بوضع العرض (Demo Mode)، وسيتم لاحقًا استبدال الرمز برمز الوصول الفعلي (access_token) لتفعيل المزامنة المباشرة التلقائية لبيانات السلات المتروكة والطلبات.
+      </p>
+      <button onclick="window.close()" style="margin-top: 25px; background-color: #10b981; color: #0b192f; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s;">إغلاق الصفحة والعودة لرقيب</button>
+    </div>
+  `);
+});
+
+app.post("/api/webhooks/salla", (req, res) => {
+  const event = req.body?.event || req.body?.action || req.body?.event_type || "unknown_event";
+  console.log(`[Salla Webhook] Received Event Type: ${event}`);
+
+  // Demo-safe webhook persistence. Later this should map events to orders, shipments, returns, and carts.
+  const db = loadDB();
+  const anyDb = db as any;
+  if (!anyDb.webhookEvents) anyDb.webhookEvents = [];
+  anyDb.webhookEvents.unshift({
+    id: "webhook-" + Date.now(),
+    provider: "salla",
+    eventType: event,
+    payload: req.body || {},
+    processed: true,
+    createdAt: new Date().toISOString(),
+  });
+  saveDB(db);
+
+  res.json({ status: "ok", received: true, event });
+});
+
+app.get("/api/salla/status", (req, res) => {
+  res.json({ connected: false, mode: "demo" });
+});
+
+//---------------------------------------------------------
 // Manual CSV upload imports
 //---------------------------------------------------------
 app.post("/api/upload", (req, res) => {
@@ -1085,25 +1134,6 @@ app.post("/api/demo/load", async (req, res) => {
   seedDemoOrdersIfNeeded(db);
   await triggerDelayedNotifications(db);
   res.json({ success: true, message: "تمت إعادة تهيئة البيانات التجريبية بنجاح وتلقيم التنبيهات التلقائية" });
-});
-
-// Webhook simulated receiver
-app.post("/api/webhooks/salla", (req, res) => {
-  const { event_type, payload } = req.body;
-  const db = loadDB();
-
-  db.returns.push({
-    id: "web-evt-" + Date.now(),
-    storeId: null,
-    provider: "salla",
-    eventType: event_type || "order.status.updated",
-    payload,
-    processed: true,
-    createdAt: new Date().toISOString(),
-  });
-
-  saveDB(db);
-  res.json({ success: true });
 });
 
 //---------------------------------------------------------

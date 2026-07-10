@@ -12,7 +12,9 @@ import {
   CheckSquare, 
   Unplug, 
   Layers,
-  X
+  X,
+  MessageCircle,
+  ShoppingCart
 } from "lucide-react";
 
 interface SidebarProps {
@@ -23,14 +25,16 @@ interface SidebarProps {
   logout: () => void;
   isOpen: boolean;
   onClose: () => void;
+  onNavigate?: (path: string) => void;
 }
 
-export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla, logout, isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla, logout, isOpen, onClose, onNavigate }: SidebarProps) {
   const menuItems = [
     { id: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
     { id: "orders", label: "جميع الطلبات", icon: ShoppingBag },
     { id: "delayed", label: "شحنات متأخرة", icon: AlertTriangle },
     { id: "returns", label: "إدارة المرتجعات", icon: RotateCcw },
+    { id: "abandoned_carts", label: "السلات المتروكة", icon: ShoppingCart },
     { id: "messages", label: "مركز الرسائل والواتساب", icon: MessageSquare },
     { id: "upload", label: "رفع ملف CSV", icon: FileSpreadsheet },
     { id: "settings", label: "إعدادات المتجر", icon: Settings },
@@ -49,7 +53,7 @@ export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla,
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <RaqeebLogo size={36} />
-            <span className="font-extrabold text-lg text-slate-900 tracking-tight">رقيب التجارة</span>
+            <span className="font-extrabold text-lg text-slate-900 tracking-tight">رقيب</span>
           </div>
           {/* Close button for mobile */}
           <button 
@@ -113,6 +117,23 @@ export default function Sidebar({ currentTab, setCurrentTab, storeName, isSalla,
             className="text-xs text-red-600 hover:text-white font-medium transition-all cursor-pointer py-1.5 px-3 rounded-lg hover:bg-red-600 hover:shadow-sm"
           >
             خروج
+          </button>
+        </div>
+
+        {/* Legal Links */}
+        <div className="flex justify-center gap-3 text-[10px] text-slate-400 border-t border-slate-100/60 pt-2.5 mt-1">
+          <button 
+            onClick={() => onNavigate && onNavigate("/privacy")} 
+            className="hover:text-emerald-600 hover:underline cursor-pointer font-semibold transition-all"
+          >
+            سياسة الخصوصية
+          </button>
+          <span className="text-slate-300">•</span>
+          <button 
+            onClick={() => onNavigate && onNavigate("/terms")} 
+            className="hover:text-emerald-600 hover:underline cursor-pointer font-semibold transition-all"
+          >
+            شروط الاستخدام
           </button>
         </div>
       </div>

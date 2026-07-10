@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import RaqeebLogo from "./components/RaqeebLogo";
+import PrivacyPolicy from "./components/PrivacyPolicy";
+import TermsOfService from "./components/TermsOfService";
+import AbandonedCarts from "./components/AbandonedCarts";
+import WhatsAppAutomation from "./components/WhatsAppAutomation";
 import { 
   TrendingUp, 
   Clock, 
@@ -8,6 +12,7 @@ import {
   AlertTriangle, 
   MessageSquare, 
   ChevronLeft, 
+  ChevronDown,
   Search, 
   RefreshCw, 
   Copy, 
@@ -22,7 +27,8 @@ import {
   Globe,
   Sparkles,
   AlertCircle,
-  Menu
+  Menu,
+  MessageCircle
 } from "lucide-react";
 import { 
   AreaChart, 
@@ -34,7 +40,9 @@ import {
   ResponsiveContainer, 
   Legend,
   BarChart,
-  Bar
+  Bar,
+  LineChart,
+  Line
 } from "recharts";
 import { Order, ReturnRequest, MessageTemplate, AgentTask, CustomerAlert } from "./types";
 
@@ -63,7 +71,25 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true); // Start as true inside app for frictionless demo
   const [currentTab, setCurrentTab] = useState<string>("dashboard");
+  const [messagesSubTab, setMessagesSubTab] = useState<"automation" | "templates">("automation");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  // Simple Path-based router state
+  const [currentPath, setCurrentPath] = useState<string>(window.location.pathname);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigateTo = (path: string) => {
+    window.history.pushState({}, "", path);
+    setCurrentPath(path);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   // States
   const [orders, setOrders] = useState<Order[] | any[]>([]);
@@ -71,6 +97,7 @@ export default function App() {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [alerts, setAlerts] = useState<CustomerAlert[]>([]);
+  const [abandonedCarts, setAbandonedCarts] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({
     returnDays: 7,
     openedReturnable: false,
@@ -120,9 +147,27 @@ export default function App() {
   // Template custom edit states
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingTemplateBody, setEditingTemplateBody] = useState("");
+  const [wsInputNumber, setWsInputNumber] = useState("");
 
   // CSV paste/raw upload state
   const [csvContent, setCsvContent] = useState("");
+
+  // Salla API Connectivity Status state
+  const [sallaApiStatus, setSallaApiStatus] = useState<"connected" | "sandbox" | "disconnected">("sandbox");
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (store && store.platform) {
+      if (store.platform === "salla") {
+        setSallaApiStatus("connected");
+      } else if (store.platform === "demo") {
+        setSallaApiStatus("sandbox");
+      } else {
+        setSallaApiStatus("disconnected");
+      }
+    }
+  }, [store]);
+
 
   // Auto-dismiss toasts
   useEffect(() => {
@@ -162,21 +207,26 @@ export default function App() {
   const fetchCoreData = async () => {
     setLoading(true);
     try {
-      const [ordRes, retRes, tskRes, tmplRes, setRes, alertsRes, storeRes] = await Promise.all([
+      const [ordRes, retRes, tskRes, tmplRes, setRes, alertsRes, storeRes, cartRes] = await Promise.all([
         fetch("/api/orders").then(r => r.json()),
         fetch("/api/returns").then(r => r.json()),
         fetch("/api/tasks").then(r => r.json()),
         fetch("/api/messages/templates").then(r => r.json()),
         fetch("/api/settings").then(r => r.json()),
         fetch("/api/customer-alerts").then(r => r.json()).catch(() => []),
-        fetch("/api/auth/me").then(r => r.json()).catch(() => null)
+        fetch("/api/auth/me").then(r => r.json()).catch(() => null),
+        fetch("/api/abandoned-carts").then(r => r.json()).catch(() => [])
       ]);
 
       if (Array.isArray(ordRes)) setOrders(ordRes);
       if (Array.isArray(retRes)) setReturns(retRes);
       if (Array.isArray(tskRes)) setTasks(tskRes);
       if (Array.isArray(tmplRes)) setTemplates(tmplRes);
-      if (setRes && !setRes.error) setSettings(setRes);
+      if (Array.isArray(cartRes)) setAbandonedCarts(cartRes);
+      if (setRes && !setRes.error) {
+        setSettings(setRes);
+        if (setRes.whatsappNumber) setWsInputNumber(setRes.whatsappNumber);
+      }
       if (Array.isArray(alertsRes)) setAlerts(alertsRes);
       if (storeRes && storeRes.store) {
         setStore(storeRes.store);
@@ -351,6 +401,86 @@ export default function App() {
     }
   };
 
+  const formatSaudiPhoneNumber = (phone: string): string => {
+    if (!phone) return "";
+    let clean = phone.trim().replace(/\s+/g, "").replace(/[+-]/g, "");
+    if (clean.startsWith("+966")) {
+      clean = clean.substring(1);
+    }
+    if (clean.startsWith("00966")) {
+      clean = clean.substring(2);
+    }
+    if (clean.startsWith("05") && clean.length === 10) {
+      clean = "966" + clean.substring(1);
+    } else if (clean.startsWith("5") && clean.length === 9) {
+      clean = "966" + clean;
+    }
+    return clean;
+  };
+
+  const handleWhatsAppClickToChat = (phone: string, text: string) => {
+    if (!phone) {
+      showToast("رقم الجوال غير صالح أو مفقود للعميل", "error");
+      return;
+    }
+    const clean = formatSaudiPhoneNumber(phone);
+    if (!clean || clean.length < 9) {
+      showToast("رقم الجوال غير صالح ولا يمكن تحويله للمفتاح السعودي", "error");
+      return;
+    }
+    const url = `https://wa.me/${clean}?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank");
+  };
+
+  const handleSimulatedWhatsAppSend = async (orderId: string, templateType: string, defaultBody: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) {
+      showToast("خطأ: لم يتم العثور على شحنة للتأكيد", "error");
+      return;
+    }
+    if (!order.customerPhone) {
+      showToast("رقم الجوال غير صالح أو مفقود لهذا العميل", "error");
+      return;
+    }
+
+    const message = defaultBody
+      .replace(/{customer_name}/g, order.customerName)
+      .replace(/{order_number}/g, order.orderNumber)
+      .replace(/{carrier}/g, order.carrier)
+      .replace(/{customer_city}/g, order.customerCity)
+      .replace(/{city}/g, order.customerCity);
+
+    const formattedPhone = formatSaudiPhoneNumber(order.customerPhone);
+    const newAlert = {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      recipient: formattedPhone || order.customerPhone,
+      type: "whatsapp",
+      channel: "واتساب التلقائي",
+      status: "sent",
+      message: message
+    };
+
+    try {
+      const res = await fetch("/api/customer-alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newAlert)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("تمت إضافة الرسالة إلى سجل واتساب التجريبي");
+        addLog(`[رسالة واتساب تجريبية] تم إرسالها بنجاح للعميل ${order.customerName} للطلب #${order.orderNumber}`);
+        fetchCoreData();
+      } else {
+        showToast("فشلت عملية حفظ التنبيه التجريبي في السجل", "error");
+      }
+    } catch (err) {
+      showToast("فشل الاتصال بخادم رقيب", "error");
+    }
+  };
+
   const handleUpdateTemplate = async (id: string) => {
     try {
       const res = await fetch("/api/messages/templates", {
@@ -522,12 +652,13 @@ export default function App() {
   const openReturnsCount = returns.filter(r => r.status === "open").length;
   const highRiskCount = orders.filter(o => o.analysis?.riskLevel === "مرتفع").length;
   const pendingTasksCount = tasks.filter(t => t.status === "open").length;
+  const abandonedCartsCount = abandonedCarts.filter(c => c.status !== "recovered").length;
 
   return (
     <div id="app-root" className="min-h-screen bg-brand-dark flex font-sans leading-relaxed selection:bg-brand-emerald selection:text-brand-dark">
       
       {/* Full Page Splash Screen */}
-      {showSplash && (
+      {showSplash && currentPath !== "/privacy" && currentPath !== "/terms" && (
         <div 
           id="brand-splash-screen" 
           className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-50 transition-opacity duration-700 ease-in-out pointer-events-none select-none ${
@@ -542,7 +673,7 @@ export default function App() {
             
             {/* Slogan & brand name */}
             <div className="text-center space-y-2">
-              <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">رقيب التجارة</h1>
+              <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">رقيب</h1>
               <p className="text-sm text-emerald-600 font-bold tracking-wide">ندعمك لتنمو تجارتك</p>
             </div>
           </div>
@@ -556,13 +687,17 @@ export default function App() {
       )}
 
       {/* Dynamic Native RTL Navigation */}
-      {isAuthenticated && (
+      {isAuthenticated && currentPath !== "/privacy" && currentPath !== "/terms" && (
         <>
           <Sidebar 
             currentTab={currentTab} 
             setCurrentTab={(tab) => {
               setCurrentTab(tab);
               setSelectedOrderId(null);
+              if (window.location.pathname !== "/") {
+                window.history.pushState({}, "", "/");
+                setCurrentPath("/");
+              }
             }} 
             storeName={store.storeName}
             isSalla={store.platform === "salla"}
@@ -572,6 +707,7 @@ export default function App() {
             }}
             isOpen={isSidebarOpen}
             onClose={() => setIsSidebarOpen(false)}
+            onNavigate={(path) => navigateTo(path)}
           />
           {isSidebarOpen && (
             <div 
@@ -605,7 +741,7 @@ export default function App() {
             <div className="flex items-center justify-between md:hidden gap-3">
               <div className="flex items-center gap-2.5">
                 <RaqeebLogo size={32} />
-                <span className="font-extrabold text-base text-slate-900">رقيب التجارة</span>
+                <span className="font-extrabold text-base text-slate-900">رقيب</span>
               </div>
               <button
                 id="mobile-menu-toggle"
@@ -624,7 +760,7 @@ export default function App() {
                     {currentTab === "orders" && "سجلات ومتابعة الشحنات"}
                     {currentTab === "delayed" && "فلترة الشحنات المتأخرة"}
                     {currentTab === "returns" && "البوابة الذكية للمرتجعات"}
-                    {currentTab === "messages" && "قوالب ومولد رسائل الواتساب الذكي"}
+                    {currentTab === "messages" && "مركز الرسائل والواتساب التلقائي الذكي"}
                     {currentTab === "upload" && "استيراد الشحنات يدوياً (CSV)"}
                     {currentTab === "settings" && "إعدادات منصة رقيب وتنبيهات السياسة"}
                     {currentTab === "billing" && "خطط الترقية واشتراكات متجر سلة"}
@@ -651,6 +787,91 @@ export default function App() {
                   <span>استعادة الافتراضي</span>
                 </button>
 
+                {/* Salla API Connection Status Selector */}
+                <div className="relative">
+                  <button
+                    onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                    className="flex items-center gap-2 bg-[#112240] hover:bg-[#1a2f54] text-white px-3 py-1.5 md:py-2.5 rounded-xl border border-gray-800 text-xs md:text-sm font-semibold transition-all duration-200 cursor-pointer shadow-sm hover:border-gray-700 select-none"
+                  >
+                    <span className="font-bold text-slate-400">بوابة سلة:</span>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {sallaApiStatus === "connected" && (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          <span className="text-emerald-400 text-xs">🟢 متصل حي</span>
+                        </>
+                      )}
+                      {sallaApiStatus === "sandbox" && (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                          <span className="text-amber-400 text-xs">🟡 بيئة تجريبية</span>
+                        </>
+                      )}
+                      {sallaApiStatus === "disconnected" && (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                          <span className="text-red-400 text-xs">🔴 غير متصل</span>
+                        </>
+                      )}
+                    </div>
+                    <ChevronDown className="w-3.5 h-3.5 text-gray-400 transition-transform duration-200" style={{ transform: isStatusDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                  </button>
+
+                  {isStatusDropdownOpen && (
+                    <>
+                      {/* Invisible backdrop to close the dropdown */}
+                      <div className="fixed inset-0 z-40" onClick={() => setIsStatusDropdownOpen(false)} />
+                      
+                      <div className="absolute right-0 mt-2 w-48 rounded-xl bg-brand-navy border border-gray-800 shadow-2xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                        <button
+                          onClick={() => {
+                            setSallaApiStatus("connected");
+                            setIsStatusDropdownOpen(false);
+                            showToast("تم تغيير حالة اتصال بوابة سلة لـ: متصل حي (أخضر)");
+                          }}
+                          className={`w-full text-right px-4 py-2 text-xs flex items-center justify-between hover:bg-brand-dark/50 transition-colors ${sallaApiStatus === "connected" ? "text-emerald-400 font-bold bg-emerald-500/5" : "text-gray-300"}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            🟢 متصل حي
+                          </span>
+                          {sallaApiStatus === "connected" && <Check className="w-3 h-3 text-emerald-400" />}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setSallaApiStatus("sandbox");
+                            setIsStatusDropdownOpen(false);
+                            showToast("تم تغيير حالة اتصال بوابة سلة لـ: بيئة تجريبية (أصفر)");
+                          }}
+                          className={`w-full text-right px-4 py-2 text-xs flex items-center justify-between hover:bg-brand-dark/50 transition-colors ${sallaApiStatus === "sandbox" ? "text-amber-400 font-bold bg-amber-500/5" : "text-gray-300"}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            🟡 بيئة تجريبية
+                          </span>
+                          {sallaApiStatus === "sandbox" && <Check className="w-3 h-3 text-amber-400" />}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setSallaApiStatus("disconnected");
+                            setIsStatusDropdownOpen(false);
+                            showToast("تم تغيير حالة اتصال بوابة سلة لـ: غير متصل (أحمر)");
+                          }}
+                          className={`w-full text-right px-4 py-2 text-xs flex items-center justify-between hover:bg-brand-dark/50 transition-colors ${sallaApiStatus === "disconnected" ? "text-red-400 font-bold bg-red-500/5" : "text-gray-300"}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                            🔴 غير متصل
+                          </span>
+                          {sallaApiStatus === "disconnected" && <Check className="w-3 h-3 text-red-400" />}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
                 <button
                   id="sync-button"
                   onClick={syncSalla}
@@ -666,7 +887,11 @@ export default function App() {
         )}
         {/* ----------------- RENDER BODY PANELS ----------------- */}
 
-        {!isAuthenticated ? (
+        {currentPath === "/privacy" ? (
+          <PrivacyPolicy onBack={() => navigateTo("/")} />
+        ) : currentPath === "/terms" ? (
+          <TermsOfService onBack={() => navigateTo("/")} />
+        ) : !isAuthenticated ? (
           /* MARKETING / OUT OF APP CONTROLLER */
           <div className="max-w-6xl mx-auto w-full py-10 flex flex-col gap-14 text-center">
             
@@ -870,6 +1095,23 @@ export default function App() {
               </div>
             </div>
 
+            {/* Landing Footer Legal Links */}
+            <div className="flex justify-center gap-6 text-sm text-gray-500 mt-4 border-t border-gray-800/60 pt-6">
+              <button 
+                onClick={() => navigateTo("/privacy")} 
+                className="hover:text-brand-emerald hover:underline cursor-pointer transition-all font-semibold"
+              >
+                سياسة الخصوصية
+              </button>
+              <span className="text-gray-700">•</span>
+              <button 
+                onClick={() => navigateTo("/terms")} 
+                className="hover:text-brand-emerald hover:underline cursor-pointer transition-all font-semibold"
+              >
+                شروط الاستخدام
+              </button>
+            </div>
+
           </div>
         ) : (
           /* AUTHENTICATED SaaS INTERFACING APP */
@@ -1011,13 +1253,29 @@ export default function App() {
                                 <p className="text-xs text-gray-300 mt-2 mb-3 max-w-[90%] font-mono py-1">
                                   {order.analysis?.customerMessage}
                                 </p>
-                                <button
-                                  onClick={() => copyToClipboard(order.analysis?.customerMessage || "", "cust-" + order.id)}
-                                  className="w-full justify-center bg-[#112240] hover:bg-[#1e345b] text-white border border-gray-800 hover:border-brand-emerald/50 transition-all py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                                >
-                                  {copiedId === "cust-" + order.id ? <Check className="w-3.5 h-3.5 text-brand-emerald" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
-                                  {copiedId === "cust-" + order.id ? "تم النسخ!" : "نسخ رسالة العميل وإرسالها بالواتساب"}
-                                </button>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                  <button
+                                    onClick={() => copyToClipboard(order.analysis?.customerMessage || "", "cust-" + order.id)}
+                                    className="justify-center bg-[#112240] hover:bg-[#1e345b] text-white border border-gray-800 hover:border-brand-emerald/50 transition-all py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    {copiedId === "cust-" + order.id ? <Check className="w-3.5 h-3.5 text-brand-emerald" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
+                                    {copiedId === "cust-" + order.id ? "تم النسخ!" : "نسخ النص"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleWhatsAppClickToChat(order.customerPhone || "", order.analysis?.customerMessage || "")}
+                                    className="justify-center bg-emerald-950/40 hover:bg-emerald-900/40 text-brand-emerald border border-brand-emerald/30 transition-all py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 text-brand-emerald" />
+                                    إرسال عبر واتساب
+                                  </button>
+                                  <button
+                                    onClick={() => handleSimulatedWhatsAppSend(order.id, 'delayed', order.analysis?.customerMessage || "")}
+                                    className="justify-center bg-cyan-950/20 hover:bg-cyan-900/20 text-[#a5f3fc] border border-cyan-800/30 transition-all py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5 text-brand-teal" />
+                                    إرسال تلقائي تجريبي
+                                  </button>
+                                </div>
                               </div>
 
                               <div className="bg-brand-dark p-4 rounded-xl border border-gray-800 relative">
@@ -1054,45 +1312,92 @@ export default function App() {
                   <div className="space-y-6">
 
                     {/* KPI CARDS GRID */}
-                    <div id="kpi-grid" className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div id="kpi-grid" className="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-[0_4px_20px_rgba(15,23,42,0.03)] grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                       
-                      <div className="bg-brand-navy p-5 rounded-2xl border border-gray-800 flex flex-col gap-1">
-                        <span className="text-xs text-gray-400 font-bold block">إجمالي طلبات سلة</span>
+                      <div 
+                        onClick={() => setCurrentTab("orders")}
+                        className="bg-slate-50/70 hover:bg-white p-4.5 rounded-xl border border-slate-200/50 hover:border-emerald-500/30 hover:shadow-sm cursor-pointer transition-all flex flex-col justify-between gap-1 group"
+                      >
+                        <span className="text-xs text-slate-500 font-bold group-hover:text-emerald-600 transition-colors">إجمالي طلبات سلة</span>
                         <div className="flex items-baseline justify-between mt-1">
-                          <span className="text-2xl font-bold text-white">{totalOrdersCount}</span>
-                          <span className="text-xs text-brand-emerald">نشط</span>
+                          <span className="text-2xl font-bold text-slate-800">{totalOrdersCount}</span>
+                          <span className="text-xs text-brand-emerald bg-emerald-500/10 px-1.5 py-0.5 rounded font-bold">نشط</span>
                         </div>
                       </div>
 
-                      <div className="bg-brand-navy p-5 rounded-2xl border border-gray-800 flex flex-col gap-1">
-                        <span className="text-xs text-gray-400 font-bold block">شحنات متأخرة</span>
+                      <div 
+                        onClick={() => setCurrentTab("delayed")}
+                        className="bg-rose-50/60 hover:bg-rose-100/40 p-4.5 rounded-xl border border-rose-100/80 hover:border-red-300 hover:shadow-sm cursor-pointer transition-all flex flex-col justify-between gap-1 group"
+                      >
+                        <span className="text-xs text-rose-700 font-bold group-hover:text-red-600 transition-colors">شحنات متأخرة</span>
                         <div className="flex items-baseline justify-between mt-1">
-                          <span className="text-2xl font-bold text-red-400">{delayedShipmentsCount}</span>
-                          <span className="text-xs text-red-500 font-bold animate-pulse">● رصد عاجل</span>
+                          <span className="text-2xl font-extrabold text-red-600">{delayedShipmentsCount}</span>
+                        </div>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setCurrentTab("delayed"); }}
+                          className="mt-1 text-[10px] text-white bg-red-600 hover:bg-red-700 font-bold animate-pulse px-2 py-0.5 rounded border-none shadow-sm transition-all cursor-pointer inline-flex items-center justify-center gap-1 self-start"
+                        >
+                          ● رصد عاجل
+                        </button>
+                      </div>
+
+                      <div 
+                        onClick={() => { setCurrentTab("orders"); setRiskFilter("مرتفع"); }}
+                        className="bg-slate-50/70 hover:bg-white p-4.5 rounded-xl border border-slate-200/50 hover:border-amber-500/30 hover:shadow-sm cursor-pointer transition-all flex flex-col justify-between gap-1 group"
+                      >
+                        <span className="text-xs text-slate-500 font-bold group-hover:text-amber-600 transition-colors">طلبات عالية الخطورة</span>
+                        <div className="flex items-baseline justify-between mt-1">
+                          <span className="text-2xl font-bold text-amber-600">{highRiskCount}</span>
+                          <span className="text-[10px] text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded font-bold">متابعة</span>
                         </div>
                       </div>
 
-                      <div className="bg-brand-navy p-5 rounded-2xl border border-gray-800 flex flex-col gap-1">
-                        <span className="text-xs text-gray-400 font-bold block">طلبات عالية الخطورة</span>
+                      <div 
+                        onClick={() => setCurrentTab("returns")}
+                        className="bg-slate-50/70 hover:bg-white p-4.5 rounded-xl border border-slate-200/50 hover:border-teal-500/30 hover:shadow-sm cursor-pointer transition-all flex flex-col justify-between gap-1 group"
+                      >
+                        <span className="text-xs text-slate-500 font-bold group-hover:text-brand-teal transition-colors">طلبات مرتجعات مفتوحة</span>
                         <div className="flex items-baseline justify-between mt-1">
-                          <span className="text-2xl font-bold text-amber-500">{highRiskCount}</span>
-                          <span className="text-xs text-amber-400">تتطلب تواصل</span>
+                          <span className="text-2xl font-bold text-slate-800">{openReturnsCount}</span>
+                          <span className="text-[10px] text-brand-teal bg-sky-500/10 px-1.5 py-0.5 rounded font-bold">تحت القرار</span>
                         </div>
                       </div>
 
-                      <div className="bg-brand-navy p-5 rounded-2xl border border-gray-800 flex flex-col gap-1">
-                        <span className="text-xs text-gray-400 font-bold block">طلبات مرتجعات مفتوحة</span>
+                      <div 
+                        onClick={() => setCurrentTab("abandoned_carts")}
+                        className="bg-slate-50/70 hover:bg-white p-4.5 rounded-xl border border-slate-200/50 hover:border-emerald-500/30 hover:shadow-sm cursor-pointer transition-all flex flex-col justify-between gap-1 group"
+                      >
+                        <span className="text-xs text-slate-500 font-bold group-hover:text-emerald-600 transition-colors">السلات المتروكة</span>
                         <div className="flex items-baseline justify-between mt-1">
-                          <span className="text-2xl font-bold text-brand-teal">{openReturnsCount}</span>
-                          <span className="text-xs text-brand-teal">تحت القرار</span>
+                          <span className="text-2xl font-bold text-amber-600 transition-colors">{abandonedCartsCount}</span>
+                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                            استعادة ←
+                          </span>
                         </div>
                       </div>
 
-                      <div className="bg-brand-navy p-5 rounded-2xl border border-gray-800 flex flex-col gap-1 col-span-2 md:col-span-1">
-                        <span className="text-xs text-gray-400 font-bold block">تنبيهات معلقة</span>
-                        <div className="flex items-baseline justify-between mt-1">
-                          <span className="text-2xl font-bold text-[#fcd34d]">{pendingTasksCount}</span>
-                          <span className="text-xs text-gray-400">تحديث اليوم</span>
+                      <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/50 flex flex-col gap-1">
+                        <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          رسائل واتساب اليوم
+                        </span>
+                        <div className="mt-1 space-y-0.5 text-[11px]">
+                          <div className="flex items-center justify-between text-slate-600">
+                            <span>أرسلت:</span>
+                            <span className="font-bold text-slate-800">27</span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-600">
+                            <span>فشلت:</span>
+                            <span className="font-bold text-red-500">2</span>
+                          </div>
+                          <div className="flex items-center justify-between text-slate-600">
+                            <span>بالانتظار:</span>
+                            <span className="font-bold text-amber-500">5</span>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-slate-200/80 pt-0.5 mt-0.5 text-slate-500 font-bold">
+                            <span>النجاح:</span>
+                            <span className="text-emerald-600">93%</span>
+                          </div>
                         </div>
                       </div>
 
@@ -1136,28 +1441,11 @@ export default function App() {
 
                       <div className="w-full h-[300px] mt-2 select-none">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart
+                          <BarChart
                             data={delayedTrendData}
                             margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                            barSize={18}
                           >
-                            <defs>
-                              <linearGradient id="colorAramex" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01}/>
-                              </linearGradient>
-                              <linearGradient id="colorSMSA" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
-                                <stop offset="95%" stopColor="#10b981" stopOpacity={0.01}/>
-                              </linearGradient>
-                              <linearGradient id="colorNaqel" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15}/>
-                                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.01}/>
-                              </linearGradient>
-                              <linearGradient id="colorSPL" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#ec4899" stopOpacity={0.15}/>
-                                <stop offset="95%" stopColor="#ec4899" stopOpacity={0.01}/>
-                              </linearGradient>
-                            </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                             <XAxis 
                               dataKey="day" 
@@ -1175,6 +1463,7 @@ export default function App() {
                               dx={-10}
                             />
                             <Tooltip 
+                              cursor={{ fill: 'rgba(241, 245, 249, 0.6)' }}
                               content={({ active, payload, label }) => {
                                 if (active && payload && payload.length) {
                                   return (
@@ -1195,11 +1484,11 @@ export default function App() {
                                 return null;
                               }}
                             />
-                            <Area type="monotone" name="أرامكس" dataKey="Aramex" stroke="#3b82f6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAramex)" />
-                            <Area type="monotone" name="سمسا" dataKey="SMSA" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSMSA)" />
-                            <Area type="monotone" name="ناقل" dataKey="Naqel" stroke="#f59e0b" strokeWidth={2.5} fillOpacity={1} fill="url(#colorNaqel)" />
-                            <Area type="monotone" name="SPL" dataKey="SPL" stroke="#ec4899" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSPL)" />
-                          </AreaChart>
+                            <Bar name="أرامكس" dataKey="Aramex" stackId="a" fill="#0ea5e9" />
+                            <Bar name="سمسا" dataKey="SMSA" stackId="a" fill="#10b981" />
+                            <Bar name="ناقل" dataKey="Naqel" stackId="a" fill="#f59e0b" />
+                            <Bar name="SPL" dataKey="SPL" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                          </BarChart>
                         </ResponsiveContainer>
                       </div>
                       
@@ -1626,6 +1915,22 @@ export default function App() {
                                         <Clock className="w-3.5 h-3.5 text-brand-emerald" />
                                         إرسال بريد إلكتروني تجريبي
                                       </button>
+
+                                      <button
+                                        onClick={() => handleWhatsAppClickToChat(o.customerPhone || "", o.analysis?.customerMessage || "")}
+                                        className="bg-[#112240] text-emerald-400 border border-emerald-900/40 py-2 rounded-lg font-bold text-[11px] hover:bg-emerald-950/20 transition-all cursor-pointer text-center flex items-center justify-center gap-1"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5 text-brand-emerald" />
+                                        إرسال عبر واتساب
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleSimulatedWhatsAppSend(o.id, 'delayed', o.analysis?.customerMessage || "")}
+                                        className="bg-[#112240] text-cyan-400 border border-cyan-900/40 py-2 rounded-lg font-bold text-[11px] hover:bg-cyan-950/20 transition-all cursor-pointer text-center flex items-center justify-center gap-1"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5 text-brand-teal" />
+                                        إرسال تلقائي تجريبي
+                                      </button>
                                     </div>
                                   </div>
                                 </div>
@@ -1823,6 +2128,32 @@ export default function App() {
                                   </button>
                                 </div>
 
+                                {(() => {
+                                  const associatedOrder = orders.find(o => o.id === ret.orderId || o.orderNumber === ret.orderNumber);
+                                  const phone = associatedOrder?.customerPhone || "";
+                                  const orderId = associatedOrder?.id || "";
+                                  return (
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <button
+                                        onClick={() => handleWhatsAppClickToChat(phone, ret.customerMessage)}
+                                        disabled={!phone}
+                                        className="w-full justify-center bg-emerald-950/40 hover:bg-emerald-900/40 text-brand-emerald border border-brand-emerald/30 transition-all py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-center"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5 text-brand-emerald" />
+                                        إرسال عبر واتساب
+                                      </button>
+                                      <button
+                                        onClick={() => handleSimulatedWhatsAppSend(orderId, 'returns', ret.customerMessage)}
+                                        disabled={!orderId}
+                                        className="w-full justify-center bg-cyan-950/20 hover:bg-cyan-900/20 text-[#a5f3fc] border border-cyan-800/30 transition-all py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-center"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5 text-brand-teal" />
+                                        إرسال تلقائي تجريبي
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
+
                               </div>
                             ))
                           )}
@@ -1835,84 +2166,131 @@ export default function App() {
                 )}
 
 
-                {/* TAB 5: MESSAGE TEMPLATE / GENERATOR */}
+                {currentTab === "abandoned_carts" && (
+                  <AbandonedCarts 
+                    showToast={showToast} 
+                    addLog={addLog} 
+                    onRefreshAll={fetchCoreData} 
+                  />
+                )}
+
+
                 {currentTab === "messages" && (
                   <div className="space-y-6">
-                    <div className="bg-brand-navy p-6 rounded-2xl border border-gray-800 space-y-2">
-                      <h3 className="font-bold text-white text-base">مكتبة قوالب رسائل الواتساب للتواصل مع العملاء</h3>
-                      <p className="text-xs text-gray-400 leading-normal">
-                        صممنا هذه الميزة لتساعدك على الحفاظ على نبرة احترافية موحدة في مراسلات متجرك. يمكنك تعديل النصوص وحفظها، أو استخدام المتغيرات الديناميكية مثل اسم العميل، والناقل، والمدينة.
-                      </p>
+                    {/* Dynamic Integrated Sub-Tabs Switching */}
+                    <div className="flex border-b border-gray-800/80 pb-px mb-6 gap-6 justify-start">
+                      <button
+                        onClick={() => setMessagesSubTab("automation")}
+                        className={`pb-3 font-bold text-sm relative transition-all cursor-pointer ${
+                          messagesSubTab === "automation" 
+                            ? "text-brand-emerald border-b-2 border-brand-emerald" 
+                            : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        قنوات واتساب والربط التلقائي
+                      </button>
+                      <button
+                        onClick={() => setMessagesSubTab("templates")}
+                        className={`pb-3 font-bold text-sm relative transition-all cursor-pointer ${
+                          messagesSubTab === "templates" 
+                            ? "text-brand-emerald border-b-2 border-brand-emerald" 
+                            : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        مكتبة قوالب المراسلة اليدوية
+                      </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {templates.map((t) => (
-                        <div key={t.id} className="bg-brand-navy p-6 rounded-2xl border border-gray-800 flex flex-col justify-between gap-4">
-                          <div>
-                            <div className="flex items-center justify-between pb-3 border-b border-gray-800/80">
-                              <h4 className="font-bold text-white text-sm">{t.title}</h4>
-                              <span className="bg-brand-emerald/10 text-brand-emerald border border-brand-emerald/20 text-[10px] px-2 py-0.5 rounded font-semibold">{t.tone}</span>
-                            </div>
-
-                            {editingTemplateId === t.id ? (
-                              <div className="mt-3">
-                                <textarea
-                                  value={editingTemplateBody}
-                                  onChange={(e) => setEditingTemplateBody(e.target.value)}
-                                  className="w-full bg-brand-dark border border-gray-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-brand-emerald"
-                                  rows={5}
-                                />
-                                <div className="text-[10px] text-gray-500 mt-1 leading-normal">
-                                  المتغيرات المدعومة: {" {customer_name}، {order_number}، {carrier}، {customer_city}، {store_name} "}
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-xs text-gray-300 mt-3 font-mono leading-relaxed whitespace-pre-wrap">
-                                {t.body}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="flex gap-2">
-                            {editingTemplateId === t.id ? (
-                              <>
-                                <button
-                                  onClick={() => handleUpdateTemplate(t.id)}
-                                  className="bg-brand-emerald text-brand-dark px-4 py-1.5 rounded-lg text-xs font-bold cursor-pointer"
-                                >
-                                  حفظ القالب
-                                </button>
-                                <button
-                                  onClick={() => setEditingTemplateId(null)}
-                                  className="bg-gray-800 text-gray-400 px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
-                                >
-                                  إلغاء
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    setEditingTemplateId(t.id);
-                                    setEditingTemplateBody(t.body);
-                                  }}
-                                  className="bg-[#112240] text-gray-300 hover:text-white hover:border-brand-emerald/40 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                                >
-                                  تعديل النص
-                                </button>
-                                <button
-                                  onClick={() => copyToClipboard(t.body, "tmpl-" + t.id)}
-                                  className="bg-brand-emerald/10 text-brand-emerald border border-brand-emerald/20 px-3 py-1.5 rounded-lg text-xs font-extrabold hover:bg-brand-emerald/20 cursor-pointer"
-                                >
-                                  نسخ القالب التجريبي
-                                </button>
-                              </>
-                            )}
-                          </div>
+                    {messagesSubTab === "automation" ? (
+                      <WhatsAppAutomation
+                        settings={settings}
+                        setSettings={setSettings}
+                        wsInputNumber={wsInputNumber}
+                        setWsInputNumber={setWsInputNumber}
+                        formatSaudiPhoneNumber={formatSaudiPhoneNumber}
+                        showToast={showToast}
+                        addLog={addLog}
+                        alerts={alerts}
+                        handleResetDemoData={handleResetDemoData}
+                      />
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="bg-brand-navy p-6 rounded-2xl border border-gray-800 space-y-2 text-right">
+                          <h3 className="font-bold text-white text-base">مكتبة قوالب رسائل الواتساب للتواصل مع العملاء</h3>
+                          <p className="text-xs text-gray-400 leading-normal">
+                            صممنا هذه الميزة لتساعدك على الحفاظ على نبرة احترافية موحدة في مراسلات متجرك. يمكنك تعديل النصوص وحفظها، أو استخدام المتغيرات الديناميكية مثل اسم العميل، والناقل، والمدينة.
+                          </p>
                         </div>
-                      ))}
-                    </div>
 
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-right">
+                          {templates.map((t) => (
+                            <div key={t.id} className="bg-brand-navy p-6 rounded-2xl border border-gray-800 flex flex-col justify-between gap-4">
+                              <div>
+                                <div className="flex items-center justify-between pb-3 border-b border-gray-800/80">
+                                  <h4 className="font-bold text-white text-sm">{t.title}</h4>
+                                  <span className="bg-brand-emerald/10 text-brand-emerald border border-brand-emerald/20 text-[10px] px-2 py-0.5 rounded font-semibold">{t.tone}</span>
+                                </div>
+
+                                {editingTemplateId === t.id ? (
+                                  <div className="mt-3">
+                                    <textarea
+                                      value={editingTemplateBody}
+                                      onChange={(e) => setEditingTemplateBody(e.target.value)}
+                                      className="w-full bg-brand-dark border border-gray-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-brand-emerald text-right"
+                                      rows={5}
+                                    />
+                                    <div className="text-[10px] text-gray-500 mt-1 leading-normal">
+                                      المتغيرات المدعومة: {" {customer_name}، {order_number}، {carrier}، {customer_city}، {store_name} "}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-gray-300 mt-3 font-mono leading-relaxed whitespace-pre-wrap">
+                                    {t.body}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex gap-2">
+                                {editingTemplateId === t.id ? (
+                                  <>
+                                    <button
+                                      onClick={() => handleUpdateTemplate(t.id)}
+                                      className="bg-brand-emerald text-brand-dark px-4 py-1.5 rounded-lg text-xs font-bold cursor-pointer"
+                                    >
+                                      حفظ القالب
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingTemplateId(null)}
+                                      className="bg-gray-800 text-gray-400 px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+                                    >
+                                      إلغاء
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setEditingTemplateId(t.id);
+                                        setEditingTemplateBody(t.body);
+                                      }}
+                                      className="bg-[#112240] text-gray-300 hover:text-white hover:border-brand-emerald/40 border border-gray-800 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                                    >
+                                      تعديل النص
+                                    </button>
+                                    <button
+                                      onClick={() => copyToClipboard(t.body, "tmpl-" + t.id)}
+                                      className="bg-brand-emerald/10 text-brand-emerald border border-brand-emerald/20 px-3 py-1.5 rounded-lg text-xs font-extrabold hover:bg-brand-emerald/20 cursor-pointer"
+                                    >
+                                      نسخ القالب التجريبي
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2140,94 +2518,174 @@ export default function App() {
 
                     </div>
 
-                    <button 
-                      type="submit" 
-                      className="bg-brand-emerald hover:bg-brand-emerald/90 text-brand-dark font-extrabold px-6 py-2.5 rounded-xl text-xs transition-all cursor-pointer"
-                    >
-                      حفظ إعدادات وثاق المتجر وتنبيهات العملاء
-                    </button>
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-2">
+                      <button 
+                        type="submit" 
+                        className="bg-brand-emerald hover:bg-brand-emerald/90 text-brand-dark font-extrabold px-6 py-2.5 rounded-xl text-xs transition-all cursor-pointer"
+                      >
+                        حفظ إعدادات وثاق المتجر وتنبيهات العملاء
+                      </button>
+
+                      {/* Legal Quick Links inside settings */}
+                      <div className="flex gap-4 text-xs text-slate-500 font-semibold">
+                        <button 
+                          type="button"
+                          onClick={() => navigateTo("/privacy")} 
+                          className="hover:text-emerald-600 hover:underline cursor-pointer transition-all"
+                        >
+                          سياسة الخصوصية
+                        </button>
+                        <span className="text-slate-300">•</span>
+                        <button 
+                          type="button"
+                          onClick={() => navigateTo("/terms")} 
+                          className="hover:text-emerald-600 hover:underline cursor-pointer transition-all"
+                        >
+                          شروط الاستخدام
+                        </button>
+                      </div>
+                    </div>
                   </form>
                 )}
 
 
                 {/* TAB 8: PRICING / BILLING */}
                 {currentTab === "billing" && (
-                  <div className="space-y-6">
-                    <div className="text-center py-6">
-                      <h3 className="text-2xl font-bold text-white mb-2">خطط الاشتراك وباقات رقيب التجارة لمتاجر سلة</h3>
-                      <p className="text-gray-400 text-sm max-w-xl mx-auto">
-                        اختر الباقة المناسبة لحجم طلبياتك ومبيعات متجرك الشهري. ابدأ بالتجربة المجانية وقم بالترقية بأي وقت لاحقًا.
+                  <div className="space-y-8">
+                    <div className="text-center py-6 space-y-4">
+                      <h3 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">خطط الاشتراك وباقات رقيب التجارة لمتاجر سلة</h3>
+                      
+                      {/* Visionary Quote Banner */}
+                      <div className="max-w-3xl mx-auto p-6.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-brand-navy to-emerald-950/40 border border-emerald-500/25 text-center relative shadow-xl hover:border-emerald-500/40 transition-all duration-300">
+                        <span className="absolute -top-3 right-6 bg-brand-emerald text-brand-dark font-extrabold text-[10px] px-3.5 py-1 rounded-full uppercase tracking-wider shadow-md">رؤيتنا وقيمتنا</span>
+                        <p className="text-sm md:text-base font-extrabold text-white leading-relaxed">
+                          "نحن لا نكتفي بحل المشكلة… نحن نحول كل تواصل مع العميل إلى فرصة لرفع الولاء وبناء الثقة."
+                        </p>
+                      </div>
+
+                      <p className="text-gray-400 text-sm max-w-xl mx-auto pt-2">
+                        اختر الباقة المناسبة لحجم طلباتك ورسائل متجرك. ابدأ بالتجربة المجانية وقم بالترقية بأي وقت لتوسيع نطاق المبيعات.
                       </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full">
                       
                       {/* Starter Card */}
-                      <div className="bg-brand-navy p-6 rounded-2xl border border-gray-805 text-right flex flex-col justify-between gap-6 relative">
-                        <div className="space-y-4">
-                          <span className="text-brand-emerald font-bold text-xs bg-brand-emerald/10 border border-brand-emerald/20 px-2.5 py-0.5 rounded-full inline-block">باقة البداية Starter</span>
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-3xl font-extrabold text-white">199 ريال</span>
+                      <div className="bg-brand-navy p-6.5 rounded-2xl border border-gray-800 hover:border-brand-emerald/40 text-right flex flex-col justify-between gap-6 relative transition-all hover:scale-[1.01] hover:shadow-xl hover:shadow-brand-emerald/5 group">
+                        <div className="space-y-5">
+                          <span className="text-brand-emerald font-bold text-xs bg-brand-emerald/10 border border-brand-emerald/20 px-3 py-1 rounded-full inline-block">باقة البداية Starter</span>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-3xl font-black text-white">199 ريال</span>
                             <span className="text-xs text-gray-400">/ شهريًا</span>
                           </div>
                           
-                          <p className="text-xs text-gray-300 leading-normal">مثالية للمتاجر الناشئة التي تسعى لإبقاء مبيعاتها الأولى بعيدة عن المشاكل لوجستياً.</p>
+                          <p className="text-xs text-gray-300 leading-normal">مثالية للمتاجر الناشئة التي تبدأ في أتمتة تواصلها مع عملائها الأوائل.</p>
                           
-                          <ul className="text-xs space-y-2.5 text-gray-400">
-                            <li>✓ حتى 300 طلب شهرياً</li>
-                            <li>✓ مراقبة الشحنات المتأخرة والراكدة</li>
-                            <li>✓ نسخ قوالب رسائل الواتساب المعدة</li>
-                            <li>✓ دعم فني عبر البريد الإلكتروني</li>
+                          <div className="border-t border-gray-200/40 my-4"></div>
+
+                          <ul className="text-xs space-y-3.5 text-gray-300">
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">متابعة الشحنات</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">رسائل واتساب جاهزة</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">عرض السلات المتروكة</span>
+                            </li>
+                            <li className="flex items-center gap-2.5 font-bold text-emerald-400">
+                              <Sparkles className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
+                              <span>500 رسالة واتساب تشغيلية شهريًا</span>
+                            </li>
                           </ul>
                         </div>
 
-                        <button className="w-full bg-[#112240] text-gray-300 font-bold py-2.5 rounded-xl text-xs hover:bg-brand-emerald hover:text-brand-dark transition-all cursor-pointer">البدء بالفترة التجريبية</button>
+                        <button className="w-full bg-[#112240] text-gray-300 font-bold py-3 rounded-xl text-xs hover:bg-brand-emerald hover:text-brand-dark transition-all cursor-pointer">البدء بالفترة التجريبية</button>
                       </div>
 
                       {/* Growth Card */}
-                      <div className="bg-brand-navy p-6 rounded-2xl border-2 border-brand-emerald text-right flex flex-col justify-between gap-6 relative">
-                        <div className="absolute -top-3 left-6 bg-brand-emerald text-brand-dark font-extrabold text-[10px] px-3 py-1 rounded-full uppercase tracking-wider">الأكثر مبيعاً 🔥</div>
+                      <div className="bg-brand-navy p-6.5 rounded-2xl border-2 border-brand-emerald text-right flex flex-col justify-between gap-6 relative shadow-lg shadow-brand-emerald/5 hover:scale-[1.01] hover:shadow-xl hover:shadow-brand-emerald/10 transition-all">
+                        <div className="absolute -top-3.5 left-6 bg-brand-emerald text-brand-dark font-extrabold text-[10px] px-3.5 py-1 rounded-full uppercase tracking-wider shadow-md">الأكثر مبيعًا 🔥</div>
                         
-                        <div className="space-y-4">
-                          <span className="text-brand-emerald font-bold text-xs bg-brand-emerald/10 border border-brand-emerald/20 px-2.5 py-0.5 rounded-full inline-block">باقة النمو Growth</span>
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-3xl font-extrabold text-white">499 ريال</span>
+                        <div className="space-y-5">
+                          <span className="text-brand-emerald font-bold text-xs bg-brand-emerald/10 border border-brand-emerald/20 px-3 py-1 rounded-full inline-block">باقة النمو Growth</span>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-3xl font-black text-white">499 ريال</span>
                             <span className="text-xs text-gray-400">/ شهريًا</span>
                           </div>
                           
-                          <p className="text-xs text-gray-300 leading-normal">الخيار الأمثل لمتاجر سلة المتوسطة والنشطة بمبيعات يومية كبرى.</p>
+                          <p className="text-xs text-gray-300 leading-normal">الخيار الأمثل لمتاجر سلة المتوسطة والنشطة للسيطرة الكاملة والنمو اللوجستي السليم.</p>
                           
-                          <ul className="text-xs space-y-2.5 text-gray-400">
-                            <li>✓ حتى 1000 طلب شهرياً</li>
-                            <li>✓ تحليل المرتجعات بقواعد برودية مؤتمتة</li>
-                            <li>✓ تنبيهات ذكية حية وتصنيف أولوية الخطورة</li>
-                            <li>✓ مكتبة رسائل وقوالب متطورة للمتابعة</li>
+                          <div className="border-t border-gray-200/40 my-4"></div>
+
+                          <ul className="text-xs space-y-3.5 text-gray-300">
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">إدارة المرتجعات</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">واتساب تشغيلي</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">السلات المتروكة</span>
+                            </li>
+                            <li className="flex items-center gap-2.5 font-bold text-emerald-400">
+                              <Sparkles className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
+                              <span>2000 رسالة واتساب شهريًا</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">تقارير تشغيلية</span>
+                            </li>
                           </ul>
                         </div>
 
-                        <button className="w-full bg-brand-emerald text-brand-dark font-extrabold py-2.5 rounded-xl text-xs transition-all cursor-pointer">ترقية الباقة الآن</button>
+                        <button className="w-full bg-brand-emerald text-brand-dark font-black py-3 rounded-xl text-xs transition-all cursor-pointer shadow-md shadow-brand-emerald/20">ترقية الباقة الآن</button>
                       </div>
 
                       {/* Pro Card */}
-                      <div className="bg-brand-navy p-6 rounded-2xl border border-gray-805 text-right flex flex-col justify-between gap-6 relative">
-                        <div className="space-y-4">
-                          <span className="text-brand-emerald font-bold text-xs bg-brand-emerald/10 border border-brand-emerald/20 px-2.5 py-0.5 rounded-full inline-block">باقة المحترفين Pro</span>
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-3xl font-extrabold text-white">999 ريال</span>
+                      <div className="bg-brand-navy p-6.5 rounded-2xl border border-gray-800 hover:border-brand-emerald/40 text-right flex flex-col justify-between gap-6 relative transition-all hover:scale-[1.01] hover:shadow-xl hover:shadow-brand-emerald/5 group">
+                        <div className="space-y-5">
+                          <span className="text-brand-emerald font-bold text-xs bg-brand-emerald/10 border border-brand-emerald/20 px-3 py-1 rounded-full inline-block">باقة المحترفين Pro</span>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-3xl font-black text-white">999 ريال</span>
                             <span className="text-xs text-gray-400">/ شهريًا</span>
                           </div>
                           
-                          <p className="text-xs text-gray-300 leading-normal">للشركات والمصانع ومتاجر سلة العملاقة التي تحتاج لمعالجة مستمرة.</p>
+                          <p className="text-xs text-gray-300 leading-normal">للمتاجر الكبرى والشركات التي تبحث عن أتمتة ذكية وميزات تخصيص غير محدودة.</p>
                           
-                          <ul className="text-xs space-y-2.5 text-gray-400">
-                            <li>✓ طلبات استيراد ومزامنة غير محدودة</li>
-                            <li>✓ تقارير تحليلية ومؤشرات أداء متقدمة</li>
-                            <li>✓ أكثر من تاجر ومستخدم معاً</li>
-                            <li>✓ مدير حساب لوجستي سعودي مخصص</li>
+                          <div className="border-t border-gray-200/40 my-4"></div>
+
+                          <ul className="text-xs space-y-3.5 text-gray-300">
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">واتساب تلقائي</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">كوبونات ذكية للسلات المتروكة</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">تقارير متقدمة</span>
+                            </li>
+                            <li className="flex items-center gap-2.5 font-bold text-emerald-400">
+                              <Sparkles className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
+                              <span>6000 رسالة واتساب شهريًا</span>
+                            </li>
+                            <li className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-brand-emerald shrink-0" />
+                              <span className="font-semibold">تخصيص القوالب</span>
+                            </li>
                           </ul>
                         </div>
 
-                        <button className="w-full bg-[#112240] text-gray-300 font-bold py-2.5 rounded-xl text-xs hover:bg-brand-emerald hover:text-brand-dark transition-all cursor-pointer">طلب نسخة مخصصة</button>
+                        <button className="w-full bg-[#112240] text-gray-300 font-bold py-3 rounded-xl text-xs hover:bg-brand-emerald hover:text-brand-dark transition-all cursor-pointer">طلب نسخة مخصصة</button>
                       </div>
 
                     </div>
