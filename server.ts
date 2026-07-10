@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
@@ -44,6 +44,7 @@ interface DBStructure {
   settings: Record<string, any>;
   tasks: any[];
   customerAlerts?: any[];
+  abandonedCarts?: any[];
 }
 
 function getInitialDB(): DBStructure {
@@ -137,7 +138,18 @@ function getInitialDB(): DBStructure {
       returnDays: 7,
       openedReturnable: false,
       expectedDays: 3,
-      whatsappNumber: "966501234567",
+      whatsappNumber: "",
+      whatsappConnected: false,
+      ws_send_delay: true,
+      ws_send_return_create: true,
+      ws_send_return_approve: true,
+      ws_send_return_reject: true,
+      ws_send_return_photos: true,
+      ws_send_status_update: true,
+      rule_max_one_24h: true,
+      rule_no_after_10pm: true,
+      rule_require_phone: true,
+      rule_not_if_completed: true,
       defaultTone: "برودية",
       enableEmailAlerts: true,
       enableSMSAlerts: true,
@@ -146,8 +158,107 @@ function getInitialDB(): DBStructure {
       smsTemplateBody: "عميلنا العزيز {customer_name}، نعتذر عن تأخر شحنتك مع {carrier} رقم {order_number}. نعمل على تصعيدها وتسليمها لك عاجلاً.",
     },
     tasks: [],
-    customerAlerts: [],
+    customerAlerts: [
+      {
+        id: "alert-wa-1",
+        orderId: "ord-1",
+        orderNumber: "10982",
+        customerName: "سليمان الفوزان",
+        recipient: "966539887711",
+        type: "whatsapp",
+        channel: "واتساب التلقائي",
+        status: "sent",
+        sentAt: "2026-06-23T10:15:00.000Z",
+        message: "مرحبًا سليمان الفوزان، نعتذر لك عن تأخر تحديث طلبك رقم 10982. تم رفع متابعة عاجلة مع شركة الشحن أرامكس، وسنوافيك بأي تحديث قريبًا. شكرًا لتفهمك."
+      },
+      {
+        id: "alert-wa-2",
+        orderId: "ord-2",
+        orderNumber: "10983",
+        customerName: "سارة القحطاني",
+        recipient: "966551234567",
+        type: "whatsapp",
+        channel: "واتساب التلقائي",
+        status: "failed",
+        sentAt: "2026-06-23T11:22:00.000Z",
+        message: "مرحبًا سارة القحطاني، تم استلام طلب الإرجاع الخاص بالطلب رقم 10983. سنراجعه حسب سياسة المتجر ونبلغك بالنتيجة قريبًا.",
+        failureReason: "الرقم غير متصل بـ واتساب"
+      },
+      {
+        id: "alert-wa-3",
+        orderId: "ord-4",
+        orderNumber: "10985",
+        customerName: "فاطمة الدوسري",
+        recipient: "966567788990",
+        type: "whatsapp",
+        channel: "واتساب التلقائي",
+        status: "pending",
+        sentAt: "2026-06-23T12:00:00.000Z",
+        message: "مرحبًا فاطمة الدوسري، تم قبول طلب الإرجاع الخاص بالطلب رقم 10985 مبدئيًا. سيتم تأكيد القرار النهائي بعد وصول المنتج وفحص حالته."
+      }
+    ],
+    abandonedCarts: getInitialAbandonedCarts()
   };
+}
+
+function getInitialAbandonedCarts() {
+  const getPastTime = (hoursAgo: number) => {
+    return new Date(Date.now() - hoursAgo * 3600 * 1000).toISOString();
+  };
+  return [
+    {
+      id: "cart-1",
+      cartNumber: "CRT-8910",
+      customerName: "عبدالرحمن الدوسري",
+      customerPhone: "966505123456",
+      cartValue: 480,
+      abandonedAt: getPastTime(2),
+      status: "abandoned",
+      priority: "high",
+      products: "طقم عطور الهيل والزعفران الملكي (٢ حبة)",
+      couponCode: "",
+      analysis: ""
+    },
+    {
+      id: "cart-2",
+      cartNumber: "CRT-8911",
+      customerName: "خلود السديري",
+      customerPhone: "966554789012",
+      cartValue: 290,
+      abandonedAt: getPastTime(5),
+      status: "abandoned",
+      priority: "medium",
+      products: "مبخرة ذكية متنقلة + كسر عود مروكي طبيعي",
+      couponCode: "",
+      analysis: ""
+    },
+    {
+      id: "cart-3",
+      cartNumber: "CRT-8912",
+      customerName: "فيصل الحربي",
+      customerPhone: "966542135768",
+      cartValue: 650,
+      abandonedAt: getPastTime(26),
+      status: "recovered",
+      priority: "high",
+      products: "عطر مسك روز فاخر + مجموعة زيوت عطرية مركزة",
+      couponCode: "RAQEEB15",
+      analysis: "تم التواصل عبر واتساب وتقديم كود الخصم RAQEEB15 وتم إتمام الشراء بنجاح."
+    },
+    {
+      id: "cart-4",
+      cartNumber: "CRT-8913",
+      customerName: "منى القحطاني",
+      customerPhone: "966567112233",
+      cartValue: 180,
+      abandonedAt: getPastTime(48),
+      status: "abandoned",
+      priority: "low",
+      products: "مجموعة معطرات غرف لافندر وصندل منعش",
+      couponCode: "",
+      analysis: ""
+    }
+  ];
 }
 
 function loadDB(): DBStructure {
@@ -156,6 +267,7 @@ function loadDB(): DBStructure {
       const data = fs.readFileSync(DB_FILE, "utf-8");
       const parsed = JSON.parse(data);
       if (!parsed.customerAlerts) parsed.customerAlerts = [];
+      if (!parsed.abandonedCarts) parsed.abandonedCarts = getInitialAbandonedCarts();
       if (!parsed.settings) parsed.settings = {};
       if (parsed.settings.enableEmailAlerts === undefined) parsed.settings.enableEmailAlerts = true;
       if (parsed.settings.enableSMSAlerts === undefined) parsed.settings.enableSMSAlerts = true;
@@ -350,7 +462,7 @@ function analyzeOrder(order: any, settings: any, allOrders: any[] = []): {
   let riskLevel: "منخفض" | "متوسط" | "مرتفع" = "منخفض";
   let reason = "الطلب يسير بشكل طبيعي.";
   let recommendedAction = "لا يتطلب إجراء حالياً.";
-  let internalNote = "تم التحليل آليًا بواسطة رقيب الذكي.";
+  let internalNote = "تم التحليل آليًا بواسطة ولاء الذكي.";
 
   const orderDate = new Date(order.orderDate);
   const lastUpdateDate = new Date(order.lastUpdate);
@@ -533,7 +645,7 @@ app.get("/api/salla/callback", (req, res) => {
       <body>
         <div class="card">
           <h2 style="color: #10B981;">🎉 تم ربط متجر سلة بنجاح!</h2>
-          <p>قامت منصة رقيب التجارة بمزامنة البيانات وبناء لوحة تحكم متجرك.</p>
+          <p>قامت منصة ولاء بمزامنة البيانات وبناء لوحة تحكم متجرك.</p>
           <a href="/" class="btn">ذهاب لوحة التحكم</a>
         </div>
       </body>
@@ -728,7 +840,7 @@ app.post("/api/messages/generate", async (req, res) => {
   // Use Gemini to optimize the tone if Gemini is active
   if (ai) {
     try {
-      const gPrompt = `أنت مساعد عمليات ذكي سعودي لمتاجر سلة (Raqeeb Commerce AI). 
+      const gPrompt = `أنت مساعد عمليات ذكي سعودي لمتاجر سلة (Walaa Commerce AI). 
 قم بصياغة رسالة واتساب رائعة واحترافية باللغة العربية الفصحى المبسطة أو اللهجة السعودية البيضاء المحببة بناءً على هذه المسودة:
 "${replacedText}"
 
@@ -747,7 +859,7 @@ app.post("/api/messages/generate", async (req, res) => {
         return res.json({ text: response.text.trim(), isAI: true });
       }
     } catch (e) {
-      console.error("Gemini failed, serving fallback template:", e);
+      console.warn("Gemini prompt fallback (503 or transient error):", e?.message || e);
     }
   }
 
@@ -1037,7 +1149,7 @@ async function triggerDelayedNotifications(db: DBStructure): Promise<number> {
           // Optional: utilize Gemini API to craft a more elegant notification message
           if (ai) {
             try {
-              const gPrompt = `أنت مساعد رقيب التجارة الذكي للبريد والاتصالات. قم بصياغة بريد إلكتروني أنيق للغاية واحترافي يعتذر من العميل على تأخر شحنته لأكثر من 24 ساعة:
+              const gPrompt = `أنت مساعد ولاء الذكي للبريد والاتصالات. قم بصياغة بريد إلكتروني أنيق للغاية واحترافي يعتذر من العميل على تأخر شحنته لأكثر من 24 ساعة:
 اسم العميل: ${order.customerName}
 رقم الطلب: ${order.orderNumber}
 المدينة: ${order.customerCity}
@@ -1052,7 +1164,7 @@ async function triggerDelayedNotifications(db: DBStructure): Promise<number> {
                 message = response.text.trim();
               }
             } catch (err) {
-              console.error("Gemini prompt for auto-email-alert failed:", err);
+              console.warn("Gemini prompt for auto-email-alert fallback:", err?.message || err);
             }
           }
 
@@ -1105,7 +1217,7 @@ async function triggerDelayedNotifications(db: DBStructure): Promise<number> {
           // Optional: utilize Gemini API to craft polite SMS
           if (ai) {
             try {
-              const gPrompt = `أنت مساعد رقيب التجارة الذكي للاتصالات. قم بصياغة رسالة SMS سعودية قصيرة وودية للغاية (شاملة ايموجيات مطمئنة) تعتذر من العميل على تأخر شحنته لأكثر من 24 ساعة:
+              const gPrompt = `أنت مساعد ولاء الذكي للاتصالات. قم بصياغة رسالة SMS سعودية قصيرة وودية للغاية (شاملة ايموجيات مطمئنة) تعتذر من العميل على تأخر شحنته لأكثر من 24 ساعة:
 اسم العميل: ${order.customerName}
 رقم الطلب: ${order.orderNumber}
 المدينة: ${order.customerCity}
@@ -1120,7 +1232,7 @@ async function triggerDelayedNotifications(db: DBStructure): Promise<number> {
                 message = response.text.trim();
               }
             } catch (err) {
-              console.error("Gemini prompt for auto-sms-alert failed:", err);
+              console.warn("Gemini prompt for auto-sms-alert fallback:", err?.message || err);
             }
           }
 
@@ -1169,6 +1281,20 @@ app.get("/api/customer-alerts", (req, res) => {
   res.json(db.customerAlerts || []);
 });
 
+// POST to add/log a WhatsApp/SMS/Email customer alert
+app.post("/api/customer-alerts", (req, res) => {
+  const db = loadDB();
+  if (!db.customerAlerts) db.customerAlerts = [];
+  const alert = {
+    id: `alert-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    sentAt: new Date().toISOString(),
+    ...req.body
+  };
+  db.customerAlerts.unshift(alert);
+  saveDB(db);
+  res.json({ success: true, alert });
+});
+
 // POST to manually trigger/scan delayed notifications
 app.post("/api/customer-alerts/trigger", async (req, res) => {
   const db = loadDB();
@@ -1207,13 +1333,13 @@ app.post("/api/customer-alerts/send-test", async (req, res) => {
   if (ai) {
     try {
       const gPrompt = isSMS 
-        ? `أنت مساعد رقيب التجارة الذكي لخدمة العملاء. قم بصياغة تنبيه SMS اعتذاري لطيف مع ايموجي لمشكلة تأخر شحنة في متجر سلة:
+        ? `أنت مساعد ولاء الذكي لخدمة العملاء. قم بصياغة تنبيه SMS اعتذاري لطيف مع ايموجي لمشكلة تأخر شحنة في متجر سلة:
 العميل: ${order.customerName}
 الرقم: ${order.orderNumber}
 الناقل: ${order.carrier}
 المسودة: "${message}"
 اكتب لي الرسالة لنسخها فوراً، لا تكتب أي كلام إضافي أو شروحات.`
-        : `أنت مساعد رقيب التجارة الذكي لخدمة وصياغة البريد العطور. قم بصياغة بريد إلكتروني أنيق واحترافي يعتذر لعميل متجر عطور لمشكلة تأخر شحنته أكثر من 24 ساعة:
+        : `أنت مساعد ولاء الذكي لخدمة وصياغة البريد. قم بصياغة بريد إلكتروني أنيق واحترافي يعتذر لعميل متجر سلة لمشكلة تأخر شحنته أكثر من 24 ساعة:
 العميل: ${order.customerName}
 الرقم: ${order.orderNumber}
 المدينة: ${order.customerCity}
@@ -1229,7 +1355,7 @@ app.post("/api/customer-alerts/send-test", async (req, res) => {
         message = response.text.trim();
       }
     } catch (e) {
-      console.error("Gemini test alert prompt failed:", e);
+      console.warn("Gemini test alert prompt fallback:", e?.message || e);
     }
   }
 
@@ -1268,6 +1394,181 @@ app.post("/api/customer-alerts/send-test", async (req, res) => {
 
   saveDB(db);
   res.json({ success: true, alert: newAlert });
+});
+
+//---------------------------------------------------------
+// Abandoned Carts APIs
+//---------------------------------------------------------
+app.get("/api/abandoned-carts", (req, res) => {
+  const db = loadDB();
+  res.json(db.abandonedCarts || []);
+});
+
+app.post("/api/abandoned-carts/:id/recover", (req, res) => {
+  const { id } = req.params;
+  const db = loadDB();
+  if (!db.abandonedCarts) db.abandonedCarts = [];
+  
+  const cart = db.abandonedCarts.find(c => c.id === id);
+  if (cart) {
+    cart.status = "recovered";
+    
+    // Log audit trail
+    db.tasks.push({
+      id: "tsk-cart-rec-" + Date.now(),
+      storeId: db.stores[0]?.id || "demo-store-id",
+      taskType: "other",
+      title: `استرجاع سلة متروكة لـ ${cart.customerName}`,
+      description: `تم وضع علامة "تم استرجاع السلة" يدويًا للعميل بقيمة ${cart.cartValue} ريال.`,
+      priority: "medium",
+      status: "completed",
+      createdAt: new Date().toISOString()
+    });
+    
+    saveDB(db);
+    return res.json({ success: true, cart });
+  }
+  res.status(404).json({ error: "السلة غير موجودة" });
+});
+
+app.post("/api/abandoned-carts/:id/coupon", (req, res) => {
+  const { id } = req.params;
+  const db = loadDB();
+  if (!db.abandonedCarts) db.abandonedCarts = [];
+  
+  const cart = db.abandonedCarts.find(c => c.id === id);
+  if (cart) {
+    // Generate code
+    const discount = cart.cartValue > 300 ? 15 : 10;
+    const code = `RAQEEB${discount}`;
+    cart.couponCode = code;
+    
+    // Log audit trail
+    db.tasks.push({
+      id: "tsk-cart-coup-" + Date.now(),
+      storeId: db.stores[0]?.id || "demo-store-id",
+      taskType: "other",
+      title: `كوبون خصم سلة لـ ${cart.customerName}`,
+      description: `تم إنشاء كوبون خصم مخصص ${code} (خصم ${discount}%) لاستعادة السلة المتروكة رقم ${cart.cartNumber}.`,
+      priority: "low",
+      status: "completed",
+      createdAt: new Date().toISOString()
+    });
+    
+    saveDB(db);
+    return res.json({ success: true, cart, code });
+  }
+  res.status(404).json({ error: "السلة غير موجودة" });
+});
+
+app.post("/api/abandoned-carts/:id/send-whatsapp", (req, res) => {
+  const { id } = req.params;
+  const { message } = req.body;
+  const db = loadDB();
+  if (!db.abandonedCarts) db.abandonedCarts = [];
+  if (!db.customerAlerts) db.customerAlerts = [];
+  
+  const cart = db.abandonedCarts.find(c => c.id === id);
+  if (cart) {
+    cart.status = "communicated";
+    
+    // Add to alerts
+    const alert = {
+      id: `alert-wa-cart-${Date.now()}`,
+      orderId: cart.id,
+      orderNumber: cart.cartNumber,
+      customerName: cart.customerName,
+      recipient: cart.customerPhone,
+      type: "whatsapp",
+      channel: "واتساب التلقائي",
+      status: "sent",
+      sentAt: new Date().toISOString(),
+      message: message || `مرحبًا ${cart.customerName}، لاحظنا أنك تركت منتجات رائعة في سلتك. نوفر لك خصم خاص لإتمام الشراء!`
+    };
+    db.customerAlerts.unshift(alert);
+    
+    // Log audit trail
+    db.tasks.push({
+      id: "tsk-cart-wa-" + Date.now(),
+      storeId: db.stores[0]?.id || "demo-store-id",
+      taskType: "other",
+      title: `تنبيه سلة متروكة عبر واتساب لـ ${cart.customerName}`,
+      description: `تم إرسال ومحاكاة رسالة واتساب لاستعادة السلة المتروكة رقم ${cart.cartNumber}.`,
+      priority: "high",
+      status: "completed",
+      createdAt: new Date().toISOString()
+    });
+    
+    saveDB(db);
+    return res.json({ success: true, cart, alert });
+  }
+  res.status(404).json({ error: "السلة غير موجودة" });
+});
+
+app.post("/api/abandoned-carts/:id/analyze", async (req, res) => {
+  const { id } = req.params;
+  const db = loadDB();
+  if (!db.abandonedCarts) db.abandonedCarts = [];
+  
+  const cart = db.abandonedCarts.find(c => c.id === id);
+  if (!cart) {
+    return res.status(404).json({ error: "السلة غير موجودة" });
+  }
+
+  // Set default analysis text if API fails
+  let advice = `يُنصح بتقديم خصم فوري بنسبة 10% إلى 15% للعميل لتحفيزه على إتمام الدفع. المنتجات التي تركها هي "${cart.products}" وهي ذات طلب مرتفع حالياً.`;
+  let draftedMsg = `أهلاً بك يا ${cart.customerName} 🌸\nيسعدنا تواصلك مع متجرنا! لاحظنا أنك نسيت بعض القطع الفاخرة في سلتك:\n- ${cart.products}\n\nحرصاً منا على رضاك، حجزنا لك المنتجات وسوينا لك كوبون خصم خاص: [${cart.couponCode || "RAQEEB10"}]\nتقدر تنسخ الكوبون وتكمل طلبك بسهولة من متجرنا.\n\nتمنياتنا لك بيوم سعيد! ✨`;
+
+  if (ai) {
+    try {
+      const gPrompt = `أنت مساعد رقيب التجارة الذكي (Raqeeb Commerce AI) المتخصص في استعادة السلات المتروكة لمتاجر سلة السعودية.
+قم بتحليل السلة المتروكة التالية واقترح نصيحة سريعة ومختصرة للتاجر (كيفية إقناع العميل) ثم صغ رسالة واتساب غاية في اللطف والمرح والذكاء باللهجة السعودية البيضاء المحببة (مع ايموجيات جذابة) لإقناع العميل بالعودة لإنهاء الشراء.
+
+معلومات السلة:
+اسم العميل: ${cart.customerName}
+المنتجات في السلة: ${cart.products}
+قيمة السلة الإجمالية: ${cart.cartValue} ريال سعودي
+الأولوية: ${cart.priority}
+كوبون الخصم النشط: ${cart.couponCode || "لا يوجد كوبون حالياً، صغ له كوبون RAQEEB10 لتبهر العميل"}
+
+الرجاء تقسيم الإجابة إلى قسمين واضحين كالتالي:
+[ADVICE]
+اكتب هنا نصيحة ذكية وجذابة موجهة لتاجر المتجر حول سبب ترك العميل لهذه المنتجات بالذات وتوصية استباقية لاستعادتها.
+[MESSAGE]
+اكتب هنا فقط نص الرسالة اللطيف والجاهز للإرسال للعميل عبر واتساب مباشرة لنسخه بلمسة زر واحدة.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: gPrompt,
+      });
+
+      if (response.text) {
+        const fullText = response.text.trim();
+        const adviceMatch = fullText.match(/\\[ADVICE\\]([\\s\\S]*?)(?:\\[MESSAGE\\]|$)/i) || fullText.match(/\[ADVICE\]([\s\S]*?)(?:\[MESSAGE\]|$)/i);
+        const messageMatch = fullText.match(/\\[MESSAGE\\]([\\s\\S]*)$/i) || fullText.match(/\[MESSAGE\]([\s\S]*)$/i);
+        
+        if (adviceMatch && adviceMatch[1]) {
+          advice = adviceMatch[1].trim();
+        }
+        if (messageMatch && messageMatch[1]) {
+          draftedMsg = messageMatch[1].trim();
+        } else if (!adviceMatch) {
+          // Fallback parsing
+          const split = fullText.split("\n\n");
+          if (split.length >= 2) {
+            advice = split[0];
+            draftedMsg = split.slice(1).join("\n\n");
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn("Gemini prompt for abandoned cart analysis failed, using fallback:", err?.message || err);
+    }
+  }
+
+  cart.analysis = JSON.stringify({ advice, draftedMsg });
+  saveDB(db);
+  res.json({ success: true, advice, draftedMsg, cart });
 });
 
 // Vite pipeline integration
