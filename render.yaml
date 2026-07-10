@@ -4,5 +4,11 @@ services:
     env: node
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: npm start
-    autoDeploy: true
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SALLA_APP_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
