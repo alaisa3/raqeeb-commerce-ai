@@ -955,26 +955,33 @@ app.post("/api/settings", (req, res) => {
 // Salla OAuth & Webhook endpoints
 //---------------------------------------------------------
 app.get("/api/salla/connect", (req, res) => {
+  // Salla Partners "Easy Mode" uses the installation URL, not the custom OAuth redirect URL.
+  // The access token is delivered later to /api/webhooks/salla through the app.store.authorize event.
+  const appId = process.env.SALLA_APP_ID || process.env.SALLA_APPLICATION_ID;
+
+  if (appId) {
+    return res.redirect(`https://s.salla.sa/apps/install/${encodeURIComponent(appId)}`);
+  }
+
+  // Fallback for local Custom Mode testing only. Published Salla apps should keep Easy Mode.
   const clientId = process.env.SALLA_CLIENT_ID;
   const redirectUri = process.env.SALLA_REDIRECT_URI;
 
-  if (!clientId || !redirectUri) {
-    return res.status(400).send(`
-      <div style="font-family: system-ui, sans-serif; text-align: center; padding: 50px; direction: rtl; background-color: #0b192f; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-        <h2 style="color: #ef4444; margin-bottom: 20px;">عذرًا، تهيئة الربط غير مكتملة</h2>
-        <p style="font-size: 16px; color: #cbd5e1; max-width: 600px; line-height: 1.8; margin: 0 auto 20px auto;">
-          لم يتم العثور على متغيرات البيئة المطلوبة للربط مع سلة (SALLA_CLIENT_ID أو SALLA_REDIRECT_URI). 
-          يرجى إضافة هذه المتغيرات في الإعدادات الخاصة بـ AI Studio أو ملف .env لتتمكن من استخدام ميزة الربط المباشر لـ "رقيب".
-        </p>
-        <button onclick="window.close()" style="margin-top: 20px; background-color: #10b981; color: #0b192f; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s;">إغلاق الصفحة</button>
-      </div>
-    `);
+  if (clientId && redirectUri) {
+    const sallaAuthUrl = `https://accounts.salla.sa/oauth2/auth?client_id=${encodeURIComponent(clientId)}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=offline_access&state=raqeeb-demo`;
+    return res.redirect(sallaAuthUrl);
   }
 
-  // Generate OAuth URL for Salla authorization
-  const sallaAuthUrl = `https://accounts.salla.sa/oauth2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=offline_access`;
-  
-  res.redirect(sallaAuthUrl);
+  return res.status(400).send(`
+    <div style="font-family: system-ui, sans-serif; text-align: center; padding: 50px; direction: rtl; background-color: #0b192f; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+      <h2 style="color: #ef4444; margin-bottom: 20px;">عذرًا، تهيئة الربط غير مكتملة</h2>
+      <p style="font-size: 16px; color: #cbd5e1; max-width: 650px; line-height: 1.8; margin: 0 auto 20px auto;">
+        تطبيق سلة مضبوط الآن على النمط السهل. أضف متغير البيئة SALLA_APP_ID في Render بقيمة رقم التطبيق من بوابة شركاء سلة،
+        ثم أعد النشر. بعد ذلك سيحولك زر الربط إلى رابط تثبيت التطبيق داخل سلة.
+      </p>
+      <code style="direction:ltr; background: rgba(255,255,255,0.08); color:#10b981; padding:10px 14px; border-radius:8px;">SALLA_APP_ID=1352380080</code>
+    </div>
+  `);
 });
 
 app.get("/api/salla/callback", (req, res) => {
@@ -1040,7 +1047,7 @@ app.post("/api/webhooks/salla", (req, res) => {
 });
 
 app.get("/api/salla/status", (req, res) => {
-  res.json({ connected: false, mode: "demo" });
+  res.json({ connected: false, mode: "easy_demo", appIdConfigured: Boolean(process.env.SALLA_APP_ID || process.env.SALLA_APPLICATION_ID) });
 });
 
 //---------------------------------------------------------
